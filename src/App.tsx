@@ -4,6 +4,7 @@ import { UnitPicker } from './ui/UnitPicker'
 import { VariantPanel } from './ui/VariantPanel'
 import { ColorPanel } from './ui/ColorPanel'
 import { SavedCardsPanel } from './ui/SavedCardsPanel'
+import { CloudCardsPanel } from './ui/CloudCardsPanel'
 import { CropDialog } from './ui/CropDialog'
 import { UnitCard } from './card/UnitCard'
 import { LogBoard } from './log/LogBoard'
@@ -165,6 +166,7 @@ export default function App() {
         {!isLog && <VariantPanel />}
         <ColorPanel />
         {!isLog && <SavedCardsPanel />}
+        {!isLog && <CloudCardsPanel />}
       </aside>
 
       <input

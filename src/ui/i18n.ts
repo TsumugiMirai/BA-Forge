@@ -39,6 +39,36 @@ const STRINGS = {
     chi: '保存失败：浏览器存储空间已满。',
   },
   exportJson: { eng: 'Export JSON', chi: '导出 JSON' },
+
+  // Shared online library
+  cloudTitle: { eng: 'Online library', chi: '在线卡库' },
+  cloudHint: {
+    eng: 'Shared with everyone who opens this page; no login.',
+    chi: '打开这个网页的人都能看到和修改，无需登录。',
+  },
+  cloudAuthor: { eng: 'Your name (optional)', chi: '你的名字（可选）' },
+  cloudSave: { eng: 'Upload current card', chi: '上传当前卡片' },
+  cloudUpdate: { eng: 'Save changes online', chi: '保存修改到在线卡库' },
+  cloudSaveAsNew: { eng: 'Save as new online card', chi: '另存为新的在线卡片' },
+  cloudEditing: { eng: 'Editing online card', chi: '正在编辑在线卡片' },
+  cloudRefresh: { eng: 'Refresh list', chi: '刷新列表' },
+  cloudFilter: { eng: 'Filter by name or author…', chi: '按卡名或作者筛选…' },
+  cloudEmpty: { eng: 'Nothing online yet.', chi: '在线卡库还是空的。' },
+  cloudLoading: { eng: 'Loading…', chi: '加载中…' },
+  cloudWorking: { eng: 'Working…', chi: '处理中…' },
+  cloudCreated: { eng: 'Uploaded to the online library.', chi: '已上传到在线卡库。' },
+  cloudUpdated: { eng: 'Online card saved.', chi: '在线卡片已保存。' },
+  cloudDeleted: { eng: 'Online card deleted.', chi: '在线卡片已删除。' },
+  cloudConflict: {
+    eng: 'Someone saved this card after you opened it. Open it again to see their version, or save yours as a new card.',
+    chi: '这张卡片在你打开后被别人保存过。请重新打开查看最新版本，或把你的版本另存为新卡片。',
+  },
+  cloudMissing: { eng: 'That card is no longer online.', chi: '这张卡片已经不在在线卡库里了。' },
+  cloudFailed: { eng: 'Online library error', chi: '在线卡库出错' },
+  cloudDeleteConfirm: {
+    eng: 'Delete this online card for everyone?',
+    chi: '删除这张在线卡片？所有人都将看不到它。',
+  },
   importJson: { eng: 'Import JSON…', chi: '导入 JSON…' },
   importFailed: {
     eng: 'Import failed: not an exported card file.',

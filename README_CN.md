@@ -53,6 +53,14 @@ node scripts/extract-assets.mjs <ExportedProject 路径>
 
 刷新数据库：运行 [BA-Units](https://github.com/JohnJinHM/BA-Units) 并替换 `public/data/`。
 
+## 在线卡库（可选）
+
+右侧“在线卡库”让打开网页的人共用一份卡片库：上传、打开、修改后保存、另存、删除，无需登录。
+它存在一个 Supabase 免费项目里：在项目的 SQL Editor 运行 `docs/cloud-setup.sql`，
+再把 Project URL 和 anon（publishable）key 填进 `src/cloud/config.ts`（两者本来就是给网页公开用的，
+不要填 service_role / secret key）。不填则不显示在线卡库。两人同时修改同一张卡时，后保存的一方会收到提示，不会互相覆盖；
+导入的大图片上传前会转成 WebP 以减小体积。
+
 ## 工作原理
 
 1. `loadGameDb()` 拉取全部 24 张表 + 本地化，并建立 id/外键索引。

@@ -464,6 +464,29 @@ body {
   font-family: inherit;
 }
 .saved-import:hover { border-color: #56637a; }
+.saved-import:disabled, .saved-action:disabled, .saved-load:disabled { opacity: 0.5; cursor: default; }
+
+/* shared online library (under the local saved cards) */
+.cloud-panel { margin-top: 8px; padding-top: 10px; border-top: 1px solid #2a323c; }
+.cloud-title-row { display: flex; align-items: center; justify-content: space-between; }
+.cloud-title-row .saved-action { height: 24px; }
+.cloud-input {
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: inherit;
+  padding: 5px 8px;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 12px;
+  min-width: 0;
+}
+.cloud-primary { border-color: #e8b23a; color: #e8b23a; }
+.cloud-linked { font-size: 11px; color: #e8b23a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-ok { font-size: 11px; color: #7cff81; }
+.cloud-list { display: flex; flex-direction: column; gap: 6px; }
+.cloud-load { flex-direction: column; align-items: stretch; gap: 2px; }
+.cloud-load.linked { border-color: #e8b23a; }
+.cloud-meta { font-size: 10px; color: #56637a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .color-native-input {
   flex: none;

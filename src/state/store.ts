@@ -7,7 +7,32 @@ import type { CardModel, CardStyle } from '../card/model'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
-import { loadSavedCards, newSavedCardId, persistSavedCards } from './savedCards'
+import {
+  loadSavedCards,
+  newSavedCardId,
+  parseSavedCardFile,
+  persistSavedCards,
+  serializeSavedCard,
+} from './savedCards'
+import type { CloudCardMeta } from '../cloud/cloudCards'
+import {
+  CloudConflictError,
+  createCloudCard,
+  deleteCloudCard,
+  getCloudCard,
+  listCloudCards,
+  updateCloudCard,
+} from '../cloud/cloudCards'
+import { compressCardImages } from '../cloud/compressImages'
+import type { UiStringKey } from '../ui/i18n'
+
+/** result line shown under the online library */
+export interface CloudNotice {
+  kind: 'ok' | 'error'
+  key: UiStringKey
+  /** raw error text appended to the message */
+  detail?: string
+}
 
 export type Lang = 'eng' | 'chi'
 /** which workspace is showing: the unit card, or the kill-log editor */
@@ -45,6 +70,19 @@ interface AppState {
   /** the last saveCard() could not be persisted (storage full/unavailable) */
   saveError: boolean
 
+  /** shared online library entries (metadata only), newest first */
+  cloudCards: CloudCardMeta[]
+  /** the library list is being fetched */
+  cloudListing: boolean
+  /** an online save/load/delete is running */
+  cloudBusy: boolean
+  cloudNotice: CloudNotice | null
+  /** the online entry the displayed card came from, so Save updates it in
+   *  place (version guards against overwriting someone else's newer save) */
+  cloudLinked: { id: string; version: number } | null
+  /** nickname stored with online cards (remembered in this browser) */
+  author: string
+
   load(): Promise<void>
   setLang(lang: Lang): Promise<void>
   selectUnit(unitId: number | null): void
@@ -76,6 +114,16 @@ interface AppState {
   guardEdits(action: () => void): void
   confirmPending(): void
   cancelPending(): void
+
+  setAuthor(name: string): void
+  /** fetch the online library list */
+  refreshCloud(): Promise<void>
+  /** open an online card in the editor (callers guard unsaved edits) */
+  loadCloudCard(id: string): Promise<void>
+  /** upload the displayed card: update its online entry, or add a new one
+   *  when it has none or `asNew` is set */
+  saveCloudCard(asNew?: boolean): Promise<void>
+  removeCloudCard(id: string): Promise<void>
 }
 
 function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardModel {
@@ -103,6 +151,21 @@ function rememberLang(lang: Lang) {
   }
 }
 
+const AUTHOR_KEY = 'ba-recard.author'
+
+function initialAuthor(): string {
+  try {
+    return localStorage.getItem(AUTHOR_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function errorText(e: unknown): string {
+  if (e instanceof DOMException && e.name === 'AbortError') return 'timeout'
+  return e instanceof Error ? e.message : String(e)
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   db: null,
   loadError: null,
@@ -121,6 +184,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingAction: null,
   savedCards: loadSavedCards(),
   saveError: false,
+  cloudCards: [],
+  cloudListing: false,
+  cloudBusy: false,
+  cloudNotice: null,
+  cloudLinked: null,
+  author: initialAuthor(),
 
   async load() {
     try {
@@ -153,7 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectUnit(unitId) {
     const { db } = get()
     if (!db || unitId == null) {
-      set({ selectedUnitId: unitId, selection: {}, card: null, dirty: false, colorTarget: null })
+      set({ selectedUnitId: unitId, selection: {}, card: null, dirty: false, colorTarget: null, cloudLinked: null })
       return
     }
     set({
@@ -162,6 +231,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       card: resolve(db, unitId, {}),
       dirty: false,
       colorTarget: null,
+      // a fresh card from the arsenal is not an online entry
+      cloudLinked: null,
     })
   },
 
@@ -285,6 +356,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       card: structuredClone(entry.card),
       dirty: false,
       colorTarget: null,
+      cloudLinked: null,
     })
   },
 
@@ -307,5 +379,103 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   cancelPending() {
     set({ pendingAction: null })
+  },
+
+  setAuthor(name) {
+    set({ author: name })
+    try {
+      localStorage.setItem(AUTHOR_KEY, name)
+    } catch {
+      // not fatal: the nickname just isn't remembered
+    }
+  },
+
+  async refreshCloud() {
+    set({ cloudListing: true })
+    try {
+      set({ cloudCards: await listCloudCards() })
+    } catch (e) {
+      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+    } finally {
+      set({ cloudListing: false })
+    }
+  },
+
+  async loadCloudCard(id) {
+    set({ cloudBusy: true, cloudNotice: null })
+    try {
+      const row = await getCloudCard(id)
+      const entry = row ? parseSavedCardFile(JSON.stringify(row.data)) : null
+      if (!row || !entry) {
+        set({ cloudNotice: { kind: 'error', key: 'cloudMissing' } })
+        void get().refreshCloud()
+        return
+      }
+      set({
+        selectedUnitId: entry.card.unitId,
+        selection: entry.selection ?? {},
+        compact: entry.compact,
+        style: entry.style ?? get().style,
+        card: structuredClone(entry.card),
+        dirty: false,
+        colorTarget: null,
+        cloudLinked: { id: row.id, version: row.version },
+      })
+    } catch (e) {
+      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+    } finally {
+      set({ cloudBusy: false })
+    }
+  },
+
+  async saveCloudCard(asNew = false) {
+    const { card, compact, style, selection, author, cloudLinked } = get()
+    if (!card) return
+    set({ cloudBusy: true, cloudNotice: null })
+    try {
+      const name = card.name.trim() || 'Untitled'
+      // same JSON as an exported card file, so entries load like imports
+      const payload = await compressCardImages(
+        JSON.parse(
+          serializeSavedCard({ id: '', name, savedAt: Date.now(), compact, style, selection, card }),
+        ) as unknown,
+      )
+      const input = { name, author: author.trim(), unit_id: card.unitId, data: payload }
+      const row =
+        cloudLinked && !asNew
+          ? await updateCloudCard(cloudLinked.id, cloudLinked.version, input)
+          : await createCloudCard(input)
+      set({
+        cloudLinked: { id: row.id, version: row.version },
+        dirty: false,
+        cloudNotice: { kind: 'ok', key: cloudLinked && !asNew ? 'cloudUpdated' : 'cloudCreated' },
+      })
+      void get().refreshCloud()
+    } catch (e) {
+      set({
+        cloudNotice:
+          e instanceof CloudConflictError
+            ? { kind: 'error', key: 'cloudConflict' }
+            : { kind: 'error', key: 'cloudFailed', detail: errorText(e) },
+      })
+    } finally {
+      set({ cloudBusy: false })
+    }
+  },
+
+  async removeCloudCard(id) {
+    set({ cloudBusy: true, cloudNotice: null })
+    try {
+      await deleteCloudCard(id)
+      set((s) => ({
+        cloudCards: s.cloudCards.filter((c) => c.id !== id),
+        cloudLinked: s.cloudLinked?.id === id ? null : s.cloudLinked,
+        cloudNotice: { kind: 'ok', key: 'cloudDeleted' },
+      }))
+    } catch (e) {
+      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+    } finally {
+      set({ cloudBusy: false })
+    }
   },
 }))

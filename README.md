@@ -55,6 +55,17 @@ assets afterward, then run `npm run verify` and `npm run build`.
 With the built app served on a local preview, run `node scripts/e2e-refresh.mjs <url>`
 to check DLC3 cards, default loadouts and PNG export in a browser.
 
+### Online library (optional)
+
+The right sidebar's online library is a card library shared by everyone who
+opens the page: upload, open, change and save, save as new, delete, no login.
+It lives in a free Supabase project: run `docs/cloud-setup.sql` in its SQL
+Editor, then put the project URL and anon (publishable) key in
+`src/cloud/config.ts` (both are public client values; never a service_role /
+secret key). Without them the panel is hidden. A version check stops two people
+from silently overwriting each other's edits, and large imported images are
+re-encoded as WebP before upload.
+
 ## How it works
 
 1. `loadGameDb()` fetches all 24 tables + localization and builds id/FK indexes.
