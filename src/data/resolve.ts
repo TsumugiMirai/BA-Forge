@@ -18,7 +18,8 @@ import type {
   TraitChip,
   WeaponModel,
 } from '../card/model'
-import { EMPTY_VALUE } from '../card/model'
+import { ARMOR_LABELS, EMPTY_VALUE } from '../card/model'
+import type { AmmoStatKind } from '../card/model'
 import {
   TrajectoryLocKey,
   TrajectoryType,
@@ -596,12 +597,8 @@ function buildCardModel(db: GameDb, lo: ResolvedLoadout, weaponRows: WeaponRow[]
         }
       : null,
     armorOverlay,
-    armorLabels: {
-      front: L('ui_infocard_armor_front', 'Front'),
-      sides: L('ui_infocard_armor_side', 'Sides'),
-      rear: L('ui_infocard_armor_rear', 'Rear'),
-      top: L('ui_infocard_armor_top', 'Top'),
-    },
+    // always English, whatever the UI language (owner's choice)
+    armorLabels: { ...ARMOR_LABELS },
     stats,
     abilities,
     tags,
@@ -898,11 +895,14 @@ function buildAmmoModel(
   // trajectory, effective range (×2), raw damage, blast radius (×2),
   // dispersion (×2), "20 - 40 mm Kinetic damage", supply weight in kg.
   const stats: StatLine[] = []
-  const push = (label: string, value: string) => stats.push({ icon: null, label, value })
+  // `kind` ties a line to the compact row (model.ts syncAmmoEdit)
+  const push = (label: string, value: string, kind: AmmoStatKind) =>
+    stats.push({ icon: null, label, value, kind })
   if (TrajectoryType[a.TrajectoryType])
     push(
       L('ui_infocard_ammo_trajectory', 'Shell trajectory'),
       db.cardLocOr(TrajectoryLocKey[a.TrajectoryType], TrajectoryType[a.TrajectoryType]!),
+      'trajectory',
     )
   // Fast-firing weapons list damage per second (rate of fire × damage per
   // hit), everything else the damage per hit; both rounded to 0.05.
@@ -911,17 +911,19 @@ function buildAmmoModel(
     ? `${fmt(roundToMultiple(rateOfFireSecond(weapon) * a.Damage))}/s`
     : fmt(roundToMultiple(a.Damage))
   if (bestRange > 0)
-    push(L('ui_infocard_ammo_effective_range', 'Effective range'), `${fmtInt(effRange(bestRange))} m`)
+    push(L('ui_infocard_ammo_effective_range', 'Effective range'), `${fmtInt(effRange(bestRange))} m`, 'range')
   push(
     dps ? L('ui_infocard_ammo_damage_per_second', 'Damage per second') : L('ui_infocard_ammo_damage', 'Damage'),
     damageValue,
+    'damage',
   )
   if (a.HealthAOERadius > 0)
-    push(L('ui_infocard_ammo_radius_blast', 'Blast radius'), `${fmtInt(effRange(a.HealthAOERadius))} m`)
+    push(L('ui_infocard_ammo_radius_blast', 'Blast radius'), `${fmtInt(effRange(a.HealthAOERadius))} m`, 'blast')
   if (a.DispersionHorizontalRadius > 0 || a.DispersionVerticalRadius > 0)
     push(
       L('ui_infocard_ammo_dispersion', 'Dispersion'),
       `V: ${fmt(effRange(a.DispersionVerticalRadius), 1)}m / H: ${fmt(effRange(a.DispersionHorizontalRadius), 1)}m`,
+      'dispersion',
     )
   // Penetration reads "at max range - at point blank" (the max-range value
   // first), or one value when both are equal.
@@ -931,10 +933,11 @@ function buildAmmoModel(
     push(
       L('ui_infocard_ammo_penetration', 'Penetration'),
       `${atRange === pointBlank ? atRange : `${atRange} - ${pointBlank}`} mm ${armorTypeName}`.trim(),
+      'penetration',
     )
   }
   if (a.SupplyCost > 0)
-    push(L('ui_infocard_ammo_supply_cost', 'Supply weight'), `${fmt(a.SupplyCost)} kg`)
+    push(L('ui_infocard_ammo_supply_cost', 'Supply weight'), `${fmt(a.SupplyCost)} kg`, 'supply')
 
   // Third compact column: trait icons for direct fire and guided missiles,
   // the accuracy value for everything else. Plane missiles/bombs show accuracy

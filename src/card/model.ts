@@ -26,11 +26,25 @@ export interface ArmorLabels {
   top: string
 }
 
+/** what an expanded ammo stat line shows; the ones the compact row also shows
+ *  (range, damage, penetration, dispersion ↔ accuracy) are kept in sync */
+export type AmmoStatKind =
+  | 'trajectory'
+  | 'range'
+  | 'damage'
+  | 'blast'
+  | 'dispersion'
+  | 'penetration'
+  | 'supply'
+
 export interface StatLine {
   /** sprite key into the extracted icon set (InfocardConfig mapping) */
   icon: string | null
   label: string
   value: string
+  /** ammo stat lines only; absent on cards saved before it existed (then
+   *  recognised by label, see normalizeCard) */
+  kind?: AmmoStatKind
 }
 
 export interface AbilityLine {
@@ -137,6 +151,115 @@ export interface CardModel {
 
 export const EMPTY_VALUE = '-'
 
+/** Armor facing labels: always the game's English wording, whatever the UI
+ *  language (the owner's choice; the Chinese client says 正面/侧面/背面/顶部). */
+export const ARMOR_LABELS: ArmorLabels = { front: 'Front', sides: 'Sides', rear: 'Rear', top: 'Top' }
+
+const CHINESE_ARMOR_LABELS: ArmorLabels = { front: '正面', sides: '侧面', rear: '背面', top: '顶部' }
+
+// Labels the resolver gave each ammo stat line, in both card languages — to
+// recognise the lines of cards saved before StatLine.kind existed.
+const STAT_KIND_BY_LABEL: Record<string, AmmoStatKind> = {
+  'effective range': 'range',
+  有效射程: 'range',
+  damage: 'damage',
+  'damage per second': 'damage',
+  伤害: 'damage',
+  每秒伤害: 'damage',
+  penetration: 'penetration',
+  穿深: 'penetration',
+  dispersion: 'dispersion',
+  武器散布: 'dispersion',
+}
+
+const NUMBER = /-?\d+(?:\.\d+)?/
+
+/** first number in a display string ("450 - 720 mm …" → "450"), or null */
+function firstNumber(s: string): string | null {
+  return NUMBER.exec(s)?.[0] ?? null
+}
+
+/** `text` with its first number replaced by `num` (or `num` alone when the
+ *  text has no number yet) — keeps units and trailing words as written */
+function withFirstNumber(text: string, num: string): string {
+  return NUMBER.test(text) ? text.replace(NUMBER, num) : num
+}
+
+function statOf(a: AmmoModel, kind: AmmoStatKind): StatLine | undefined {
+  return a.stats.find((s) => (s.kind ?? STAT_KIND_BY_LABEL[s.label.trim().toLowerCase()]) === kind)
+}
+
+/** the compact accuracy column carries the horizontal dispersion ("3.6m")
+ *  for indirect fire; other values ("100%", trait-only rows) stay apart */
+function isDispersionAccuracy(a: AmmoModel): boolean {
+  return a.compact.showAccuracy === true || /^\s*-?\d+(?:\.\d+)?\s*m\s*$/.test(a.compact.accuracy)
+}
+
+/**
+ * Mirror an edit between the compact ammo row and the expanded ammo panel,
+ * which show the same numbers in different shapes: range pill "1400m" ↔
+ * "1400 m"; penetration "450" ↔ "450 - 720 mm Kinetic damage" (the compact
+ * value is the at-range one, listed first); damage copied as is; accuracy
+ * "3.6m" ↔ the H part of "V: 3m / H: 3.6m".
+ */
+export function syncAmmoEdit(
+  a: AmmoModel,
+  field: 'range' | 'penetration' | 'damage' | 'accuracy',
+  from: 'compact' | 'expanded',
+): void {
+  if (field === 'damage') {
+    const line = statOf(a, 'damage')
+    if (!line) return
+    if (from === 'compact') line.value = a.compact.damage
+    else a.compact.damage = line.value
+    return
+  }
+  if (field === 'range' || field === 'penetration') {
+    const line = statOf(a, field)
+    if (!line) return
+    const compactText = field === 'range' ? a.rangePill : a.compact.penetration
+    if (from === 'compact') {
+      const n = firstNumber(compactText)
+      if (n != null) line.value = withFirstNumber(line.value, n)
+    } else {
+      const n = firstNumber(line.value)
+      if (n == null) return
+      if (field === 'range') a.rangePill = withFirstNumber(a.rangePill, n)
+      else a.compact.penetration = n
+    }
+    return
+  }
+  // accuracy ↔ horizontal dispersion
+  const line = statOf(a, 'dispersion')
+  if (!line || !isDispersionAccuracy(a)) return
+  const H = /(H:\s*)(-?\d+(?:\.\d+)?)/
+  if (from === 'compact') {
+    const n = firstNumber(a.compact.accuracy)
+    if (n != null && H.test(line.value)) line.value = line.value.replace(H, `$1${n}`)
+  } else {
+    const n = H.exec(line.value)?.[2]
+    if (n != null) a.compact.accuracy = withFirstNumber(a.compact.accuracy, n)
+  }
+}
+
+/** Which compact field an expanded stat line mirrors, if any. */
+export function syncedFieldOfStat(line: StatLine): 'range' | 'penetration' | 'damage' | 'accuracy' | null {
+  const kind = line.kind ?? STAT_KIND_BY_LABEL[line.label.trim().toLowerCase()]
+  if (kind === 'range' || kind === 'penetration' || kind === 'damage') return kind
+  if (kind === 'dispersion') return 'accuracy'
+  return null
+}
+
+/** Bring a stored card (saved locally, online, or imported) up to date:
+ *  English armor facing labels where it still has the Chinese defaults. */
+export function normalizeCard(card: CardModel): CardModel {
+  const labels = card.armorLabels
+  if (labels)
+    for (const k of Object.keys(ARMOR_LABELS) as (keyof ArmorLabels)[])
+      if (labels[k] === CHINESE_ARMOR_LABELS[k]) labels[k] = ARMOR_LABELS[k]
+  return card
+}
+
 /**
  * After removing the slot at `prefix{removed}` (e.g. prefix "weapon." or
  * "weapon.2.ammo."), drop its color overrides and shift higher indices down
@@ -212,7 +335,7 @@ export function emptyCard(): CardModel {
     health: EMPTY_VALUE,
     armor: emptyArmor(),
     armorOverlay: true,
-    armorLabels: { front: 'Front', sides: 'Sides', rear: 'Rear', top: 'Top' },
+    armorLabels: { ...ARMOR_LABELS },
     stats: [],
     abilities: [],
     tags: [],

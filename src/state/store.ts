@@ -4,6 +4,7 @@ import { loadGameDb } from '../data/db'
 import type { VariantSelection } from '../data/resolve'
 import { resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
+import { normalizeCard } from '../card/model'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
@@ -353,7 +354,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       selection: entry.selection ?? {},
       compact: entry.compact,
       style: entry.style ?? get().style,
-      card: structuredClone(entry.card),
+      card: normalizeCard(structuredClone(entry.card)),
       dirty: false,
       colorTarget: null,
       cloudLinked: null,
@@ -416,7 +417,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         selection: entry.selection ?? {},
         compact: entry.compact,
         style: entry.style ?? get().style,
-        card: structuredClone(entry.card),
+        card: normalizeCard(structuredClone(entry.card)),
         dirty: false,
         colorTarget: null,
         cloudLinked: { id: row.id, version: row.version },

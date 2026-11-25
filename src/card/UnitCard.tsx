@@ -1,6 +1,13 @@
 import { createContext, Fragment, useContext, useMemo, useState } from 'react'
 import type { AmmoModel, CardModel, WeaponModel } from './model'
-import { emptyWeapon, emptyAmmo, emptyTag, removeIndexedColors } from './model'
+import {
+  emptyWeapon,
+  emptyAmmo,
+  emptyTag,
+  removeIndexedColors,
+  syncAmmoEdit,
+  syncedFieldOfStat,
+} from './model'
 import { EditableText } from './EditableText'
 import { ammoIconUrl, chromeUrl, iconUrl, isUploadedImage, portraitUrl, weaponIconUrl } from '../assets'
 import { useAppStore } from '../state/store'
@@ -756,7 +763,15 @@ function WeaponDetail({
                       value={s.value}
                       colorKey={`weapon.${index}.ammo.${ai}.stat.${si}.value`}
                       onChange={(v) =>
-                        update((c) => void (c.weapons[index]!.ammo[ai]!.stats[si]!.value = v))
+                        update((c) => {
+                          const ammo = c.weapons[index]!.ammo[ai]!
+                          const line = ammo.stats[si]!
+                          line.value = v
+                          // range / damage / penetration / dispersion also
+                          // show in the compact row: keep it in step
+                          const field = syncedFieldOfStat(line)
+                          if (field) syncAmmoEdit(ammo, field, 'expanded')
+                        })
                       }
                     />
                   </div>
@@ -894,7 +909,13 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                         className="pill yellow"
                         value={a.rangePill}
                         colorKey={`weapon.${wi}.ammo.${ai}.range`}
-                        onChange={(v) => update((c) => void (c.weapons[wi]!.ammo[ai]!.rangePill = v))}
+                        onChange={(v) =>
+                          update((c) => {
+                            const ammo = c.weapons[wi]!.ammo[ai]!
+                            ammo.rangePill = v
+                            syncAmmoEdit(ammo, 'range', 'compact')
+                          })
+                        }
                       />
                       <AmmoIcon
                         ammo={a}
@@ -922,7 +943,11 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                   value={a.compact.penetration}
                   colorKey={`weapon.${wi}.ammo.${ai}.pen`}
                   onChange={(v) =>
-                    update((c) => void (c.weapons[wi]!.ammo[ai]!.compact.penetration = v))
+                    update((c) => {
+                      const ammo = c.weapons[wi]!.ammo[ai]!
+                      ammo.compact.penetration = v
+                      syncAmmoEdit(ammo, 'penetration', 'compact')
+                    })
                   }
                 />
                 <EditableText
@@ -930,7 +955,11 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                   value={a.compact.damage}
                   colorKey={`weapon.${wi}.ammo.${ai}.dmg`}
                   onChange={(v) =>
-                    update((c) => void (c.weapons[wi]!.ammo[ai]!.compact.damage = v))
+                    update((c) => {
+                      const ammo = c.weapons[wi]!.ammo[ai]!
+                      ammo.compact.damage = v
+                      syncAmmoEdit(ammo, 'damage', 'compact')
+                    })
                   }
                 />
                 {(() => {
@@ -940,7 +969,11 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                       value={a.compact.accuracy}
                       colorKey={`weapon.${wi}.ammo.${ai}.acc`}
                       onChange={(v) =>
-                        update((c) => void (c.weapons[wi]!.ammo[ai]!.compact.accuracy = v))
+                        update((c) => {
+                          const ammo = c.weapons[wi]!.ammo[ai]!
+                          ammo.compact.accuracy = v
+                          syncAmmoEdit(ammo, 'accuracy', 'compact')
+                        })
                       }
                     />
                   )
