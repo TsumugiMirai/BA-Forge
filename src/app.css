@@ -85,6 +85,46 @@ body {
   border-radius: 3px;
   font-family: inherit;
 }
+/* nation chips + specialization dropdown above the category tabs */
+.picker-filters { display: flex; flex-direction: column; gap: 6px; }
+.picker-nations { display: flex; flex-wrap: wrap; gap: 4px; }
+.picker-nations button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #8b98a5;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.picker-nations button.active { color: #e8b23a; border-color: #e8b23a; }
+.picker-flag { width: 20px; height: 10px; object-fit: cover; border-radius: 1px; }
+.picker-spec {
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #8b98a5;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-family: inherit;
+  min-width: 0;
+}
+.picker-spec.active { color: #e8b23a; border-color: #e8b23a; }
+.picker-count { opacity: 0.6; font-size: 10px; }
+.picker-tabs button.empty { opacity: 0.45; }
+.picker-group-label {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b98a5;
+  padding: 4px 2px 0;
+  border-bottom: 1px solid #2a323c;
+}
+.picker-empty { grid-column: 1 / -1; color: #56637a; font-size: 12px; padding: 8px 2px; }
 .picker-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .picker-tabs button {
   background: #10151a;

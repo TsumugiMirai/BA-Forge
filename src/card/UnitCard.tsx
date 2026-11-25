@@ -838,6 +838,15 @@ function BottomCompactBar({ card }: { card: CardModel }) {
             {/* icon first so the absolutely-positioned pill paints above it */}
             <WeaponIcon weapon={w} index={wi} className="compact-weapon-icon" />
             <WeaponCount value={w.count} onChange={(v) => update((c) => void (c.weapons[wi]!.count = v))} />
+            {/* new style: main guns list their practical rate of fire */}
+            {style === 'new' && w.rateOfFire && (
+              <EditableText
+                className="compact-weapon-rof"
+                value={w.rateOfFire}
+                colorKey={`weapon.${wi}.rof`}
+                onChange={(v) => update((c) => void (c.weapons[wi]!.rateOfFire = v))}
+              />
+            )}
             {/* new-style: weapon trait icons (Suppressed/CQC, static, autoload)
                 overlaid at the bottom-left of the silhouette */}
             {style === 'new' && [...w.traits, ...(w.newTraits ?? [])].length > 0 && (
@@ -932,7 +941,9 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                       }
                     />
                   )
-                  if (style !== 'new') return accuracyCell
+                  // indirect fire, cruise/ballistic missiles and bombs show
+                  // their accuracy in the new style too, like the game
+                  if (style !== 'new' || a.compact.showAccuracy) return accuracyCell
                   // new style: target-type icons; guidance is appended here
                   // except for plane missiles/bombs (whose guidance sits in the
                   // ammo slot). Fall back to the accuracy value when there is

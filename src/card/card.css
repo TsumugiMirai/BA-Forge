@@ -552,8 +552,12 @@ span.hero-portrait { position: absolute; inset: 0; }
 .compact-stat { font-size: 12px; font-weight: 600; text-align: center; justify-self: center; }
 .compact-stat.heat { color: var(--c-heat); }
 
-/* new style: give the target-icon column a little more room */
-.bottom-compact-bar.new .compact-grid { grid-template-columns: 1fr 44px 44px 72px; }
+/* new style: give the target-icon column a little more room, and the damage
+   column room for damage-per-second values ("12.75/s") */
+.bottom-compact-bar.new .compact-grid { grid-template-columns: 1fr 40px 52px 72px; }
+.bottom-compact-bar.new .compact-stat { white-space: nowrap; }
+/* new style: a main gun's practical rate of fire under its silhouette */
+.compact-weapon-rof { font-size: 10px; font-weight: 600; color: #e7f8e5; white-space: nowrap; }
 
 /* new style: weapon trait icons (Suppressed/CQC/static/autoload) overlaid on
    the bottom-left of the compact silhouette, as in game */

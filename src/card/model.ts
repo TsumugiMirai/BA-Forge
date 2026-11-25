@@ -76,6 +76,10 @@ export interface AmmoModel {
     accuracy: string
     /** HEAT rounds render the penetration value orange */
     isHeat: boolean
+    /** the third column shows the accuracy value instead of the trait icons —
+     *  the game does this for indirect fire, cruise/ballistic missiles and
+     *  bombs (UnitAmmoCompactInfo.SetAccuracy). Absent on older saved cards. */
+    showAccuracy?: boolean
   }
 }
 
@@ -91,6 +95,9 @@ export interface WeaponModel {
   newTraits: TraitChip[]
   stats: StatLine[]
   ammo: AmmoModel[]
+  /** "7.5/min" practical rate of fire the compact card shows for main guns
+   *  (UnitWeaponCompactInfo); absent for other weapons and older saved cards */
+  rateOfFire?: string
 }
 
 export interface CardModel {

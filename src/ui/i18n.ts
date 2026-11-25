@@ -64,6 +64,12 @@ const STRINGS = {
 
   // Unit picker / variant panel
   searchUnits: { eng: 'Search units…', chi: '搜索单位…' },
+  nationFilter: { eng: 'Nation', chi: '阵营' },
+  allNations: { eng: 'All', chi: '全部' },
+  specFilter: { eng: 'Specialization', chi: '专精' },
+  allSpecs: { eng: 'All specializations', chi: '全部专精' },
+  allCategories: { eng: 'All', chi: '全部' },
+  noUnits: { eng: 'No units match these filters.', chi: '没有符合筛选条件的单位。' },
   variants: { eng: 'Variants', chi: '变体' },
 
   // Icon picker dialog (weapons / ammo / tag icons)

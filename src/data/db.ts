@@ -11,12 +11,18 @@ import type {
   AmmunitionRow,
   ModificationRow,
   OptionRow,
+  PlaneFlyPresetRow,
+  SpecializationRow,
 } from './types'
 import { unitSearchNames } from './resolve'
 
 const TABLE_NAMES = [
   'Units',
   'Countries',
+  'Specializations',
+  'SpecializationAvailabilities',
+  'TransportAvailabilities',
+  'PlaneFlyPresets',
   'Armors',
   'Mobility',
   'Sensors',
@@ -77,6 +83,24 @@ export class GameDb {
     this.modificationOptions = groupBy(tables.Options, (r) => r.ModificationId)
     this.squadMembers = groupBy(tables.SquadMembers, (r) => r.UnitId)
     this.squadWeapons = groupBy(tables.SquadWeapons, (r) => r.UnitId)
+    this.flyPresets = indexById(tables.PlaneFlyPresets)
+    this.specializations = indexById(tables.Specializations)
+
+    // Which specializations offer a unit: its own availability row, plus the
+    // rows it rides along with as a transport (BTRs, Humvees, Bradleys… have
+    // no availability of their own).
+    this.unitSpecs = new Map()
+    const addSpec = (unitId: number, specId: number) => {
+      const set = this.unitSpecs.get(unitId)
+      if (set) set.add(specId)
+      else this.unitSpecs.set(unitId, new Set([specId]))
+    }
+    const availability = indexById(tables.SpecializationAvailabilities)
+    for (const r of tables.SpecializationAvailabilities) addSpec(r.UnitId, r.SpecializationId)
+    for (const r of tables.TransportAvailabilities) {
+      const a = availability.get(r.SpecializationAvailabilityId)
+      if (a) addSpec(r.UnitId, a.SpecializationId)
+    }
   }
 
   units: Map<number, UnitRow>
@@ -101,6 +125,10 @@ export class GameDb {
   modificationOptions: Map<number, OptionRow[]>
   squadMembers: Map<number, Tables['SquadMembers']>
   squadWeapons: Map<number, Tables['SquadWeapons']>
+  flyPresets: Map<number, PlaneFlyPresetRow>
+  specializations: Map<number, SpecializationRow>
+  /** unit id → ids of the specializations whose arsenal offers it */
+  unitSpecs: Map<number, Set<number>>
 
   private locLower: Map<string, string>
   private engLower: Map<string, string>
@@ -144,6 +172,21 @@ export class GameDb {
   armoryUnits(): UnitRow[] {
     return this.tables.Units.filter(
       (u) => u.DisplayInArmory && !u.IsUnitModification && u.Role !== 0,
+    )
+  }
+
+  /** Nations shown in the arsenal's filter row (Hidden ones such as the
+   *  editor's are left out), in table order like the game. */
+  armoryCountries(): CountryRow[] {
+    return this.tables.Countries.filter((c) => !c.Hidden)
+  }
+
+  /** Specializations the arsenal shows for a nation (or for every visible
+   *  nation when `countryId` is null), in table order. */
+  armorySpecs(countryId: number | null): SpecializationRow[] {
+    const visible = new Set(this.armoryCountries().map((c) => c.Id))
+    return this.tables.Specializations.filter(
+      (s) => s.ShowInHangar && (countryId == null ? visible.has(s.CountryId) : s.CountryId === countryId),
     )
   }
 

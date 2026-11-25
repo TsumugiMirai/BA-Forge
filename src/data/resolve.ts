@@ -5,6 +5,7 @@ import type {
   ArmorRow,
   MobilityRow,
   OptionRow,
+  PlaneFlyPresetRow,
   SensorRow,
   UnitRow,
   WeaponRow,
@@ -71,19 +72,48 @@ const SEEKER_GUIDANCE: Record<number, { icon: string; key: string; fallback: str
   10: [{ icon: 'FF_Icon', key: 'ui_enum_seeker_ff', fallback: 'Fire-and-Forget' }],
   50: [{ icon: 'Terninal_Guidance_Icon', key: 'ui_enum_seeker_terminal', fallback: 'Terminal Guidance' }],
   100: [{ icon: 'Semi_Active_Icon', key: 'ui_enum_seeker_sa', fallback: 'Semi-Active' }],
-  200: [
-    { icon: 'Anti_Radar_Icon', key: 'ui_enum_seeker_sead', fallback: 'Anti-Radiation' },
-    { icon: 'FF_Icon', key: 'ui_enum_seeker_ff', fallback: 'Fire-and-Forget' },
-  ],
+  // UnitAmmoCompactInfo.SetAmmoTraits gives Seeker 200 only the anti-radar
+  // chip; the fire-and-forget chip is reserved for Seeker 10.
+  200: [{ icon: 'Anti_Radar_Icon', key: 'ui_enum_seeker_sead', fallback: 'Anti-Radiation' }],
 }
+
+// Ammunitions.TrajectoryType values whose compact row lists trait icons in the
+// third column: direct fire (10) and guided missiles (100/110/120). Every other
+// trajectory (artillery, mortar, MLRS, cruise/ballistic missiles, bombs) shows
+// the accuracy value there instead (UnitAmmoCompactInfo.Init → SetAccuracy).
+const TRAIT_COLUMN_TRAJECTORIES = new Set([10, 100, 110, 120])
+
+/** UnitType values compared for equality, as the game's card code does */
+const TYPE_INFANTRY = 2
+const TYPE_VEHICLE = 4
+const TYPE_HELICOPTER = 8
+const TYPE_AIRCRAFT = 16
+const TYPE_SHIP = 32
+/** TargetType "Ground" — plane munitions aimed at a spot show accuracy */
+const TARGET_GROUND = 1
+/** UnitCategoryType Aircrafts — optics come from high-altitude sensors */
+const CATEGORY_AIRCRAFTS = 6
+/** WeaponType "Main gun": the compact card adds its rate of fire */
+const WEAPON_MAIN_GUN = 110
 
 // Display formatting, mirroring the game's InfocardConfig
 // (docs/extracted/ASSETS.md): RoundDigits 2, EffectiveRangeMultiplier 2.
 // Calibrated against the in-game screenshots in /samples: stat-strip values
 // are unit-less; ranges/blast radius/dispersion are sim values × 2; damage is
 // the raw value (no HUDMultiplier); optics/speed/weight display raw.
+// Rechecked against the card code of build 1.2.2.1 (UnitInfoCard,
+// UnitAmmoCompactInfo, UnitWeaponCompactInfo, AmmoInfoExpansionPanel,
+// WeaponHelper): numbers print with "0.##"; damage, damage per second and
+// rate of fire are first rounded to a multiple of 0.05.
 const ROUND_DIGITS = 2
 const EFFECTIVE_RANGE_MULTIPLIER = 2
+const VALUE_STEP = 0.05
+/** km/h per m/s, for plane speeds stored in their fly preset */
+const MS_TO_KMH = 3.6
+/** plane speed and turn radius are shown in steps of 5 */
+const PLANE_STAT_STEP = 5
+/** Ammunitions.IsTopArmorArmorAttack: lofted shots this steep hit top armor */
+const TOP_ATTACK_LOFT_ANGLE = 30
 
 function fmt(n: number | null | undefined, digits = ROUND_DIGITS): string {
   if (n == null || Number.isNaN(n)) return EMPTY_VALUE
@@ -104,6 +134,67 @@ function minMax(min: number, max: number, digits = ROUND_DIGITS): string {
 
 function effRange(n: number): number {
   return n * EFFECTIVE_RANGE_MULTIPLIER
+}
+
+/** UtilsClass.RoundToNearestMultiple: halves round away from zero. */
+function roundToMultiple(n: number, step = VALUE_STEP): number {
+  const q = n / step
+  return (q < 0 ? -Math.round(-q) : Math.round(q)) * step
+}
+
+/** WeaponHelper.CanDisplayDamagePerSecond: rifles, SMGs and machine guns,
+ *  shotguns, autocannons, AA and plane guns, gun pods. Their damage column
+ *  shows damage per second ("12.5/s") instead of damage per hit. */
+function canDisplayDps(weaponType: number): boolean {
+  return (
+    (weaponType >= 1 && weaponType <= 6) ||
+    (weaponType >= 25 && weaponType <= 30) ||
+    weaponType === 40 ||
+    (weaponType >= 114 && weaponType <= 116) ||
+    weaponType === 141
+  )
+}
+
+/** WeaponHelper.RateOfFireSecond(weapon, count, 1, 1): shots per second over
+ *  a whole magazine cycle (bursts, pauses and the reload), averaging the
+ *  fastest pattern (min pauses, longest bursts) and the slowest one. */
+function rateOfFireSecond(w: WeaponRow, count = 1): number {
+  const m = w.MagazineSize
+  const cycle = (pause: number, shotsPerBurst: number, reload: number) =>
+    (pause / count) * (m / shotsPerBurst - 1) +
+    (m - m / shotsPerBurst) * w.TimeBetweenShotsInBurst +
+    reload / count
+  const fast = cycle(w.TimeBetweenBurstsMin, w.ShotsPerBurstMax, w.MagazineReloadTimeMin)
+  const slow = cycle(w.TimeBetweenBurstsMax, w.ShotsPerBurstMin, w.MagazineReloadTimeMax)
+  const rate = m / Math.abs((slow - fast) * 0.5 + fast)
+  return Number.isFinite(rate) ? rate : 0
+}
+
+/** Ammunitions.IsTopArmorArmorAttack: flagged top attack, a steep loft, or a
+ *  fly-over warhead. */
+function isTopArmorAttack(a: AmmunitionRow): boolean {
+  return a.TopArmorAttack || (a.LoftAngle ?? 0) >= TOP_ATTACK_LOFT_ANGLE || (a.OverflyHeight ?? 0) > 0
+}
+
+/** AircraftHelper.GetRotationRadius(turnRate°/s, speed m/s), as written in
+ *  the game (it is not the textbook v/ω). */
+function planeTurnRadius(turnRate: number, speed: number): number {
+  const t = Math.tan((turnRate * Math.PI) / 180)
+  return ((t + 1) * speed) / t
+}
+
+/** .NET Math.Round / MathF.Round default: halves go to the even neighbour. */
+function roundHalfEven(n: number): number {
+  const r = Math.round(n)
+  return Math.abs(n % 1) === 0.5 && r % 2 !== 0 ? r - 1 : r
+}
+
+/** A plane's listed speed: its fly preset's MaxSpeed (m/s) in km/h, rounded,
+ *  then rounded to a multiple of 5 (float32 maths like the game). */
+function planeSpeed(preset: PlaneFlyPresetRow | undefined): number {
+  if (!preset) return 0
+  const kmh = roundHalfEven(Math.fround(Math.fround(preset.MaxSpeed) * Math.fround(MS_TO_KMH)))
+  return roundHalfEven(kmh / PLANE_STAT_STEP) * PLANE_STAT_STEP
 }
 
 interface ResolvedLoadout {
@@ -372,15 +463,20 @@ function buildCardModel(db: GameDb, lo: ResolvedLoadout, weaponRows: WeaponRow[]
   const country = db.countries.get(unit.CountryId)
   const armor = lo.armor
   const mob = lo.mobility
-  // The main sensor is the first SensorUnits row (not IsDefault — most units
-  // list several flagged rows); the card shows its ground optics × 2.
-  const mainSensor = lo.sensors[0] ?? null
   const squad = db.squadMembers.get(unit.Id) ?? []
 
   const isInf = unit.Type === UnitType.Infantry
   const isHel = (unit.Type & UnitType.Helicopter) !== 0
   const isAir = (unit.Type & UnitType.Aircraft) !== 0
-  const cls = isInf ? 'inf' : isHel ? 'hel' : isAir ? 'air' : 'car'
+  // UnitInfoCard.SetUnitStatistic picks the speed icon by exact unit type
+  const cls =
+    unit.Type === TYPE_INFANTRY
+      ? 'inf'
+      : unit.Type === TYPE_HELICOPTER
+        ? 'hel'
+        : unit.Type === TYPE_AIRCRAFT
+          ? 'air'
+          : 'car'
 
   // The facing-armor overlay is shown for ground vehicles; other classes get
   // an "Armor points" entry in the stats strip instead (see AH-1W sample).
@@ -389,49 +485,73 @@ function buildCardModel(db: GameDb, lo: ResolvedLoadout, weaponRows: WeaponRow[]
     (armor.KinArmorFront > 0 || armor.HeatArmorFront > 0 || armor.KinArmorSides > 0)
   const armorOverlay = !isInf && !isHel && !isAir && hasFacings
 
-  // Stats strip: icon + raw unit-less value (per /samples screenshots).
-  // Vehicles: HP, Seats, Optics, Visibility, Speed, Reverse, Weight.
-  // Helicopters/planes: Armor, HP, Optics, Visibility, Speed, Agility, Weight.
+  // Stats strip: icon + unit-less value, in the order and under the
+  // conditions of UnitInfoCard.SetUnitStatistic (build 1.2.2.1).
   const stats: StatLine[] = []
   const push = (icon: string | null, label: string, value: string) =>
     stats.push({ icon, label, value })
 
   const L = (key: string, fallback: string) => db.cardLocOr(key, fallback)
 
-  if (!armorOverlay && armor && armor.ArmorValue > 0)
+  if (armor && armor.ArmorValue > 0)
     push('Armor', L('ui_infocard_armor', 'Armor points'), fmtInt(armor.ArmorValue))
-  if (armor)
+  if (armor && armor.MaxHealthPoints > 0)
     push(
       isInf ? 'Health points.inf' : 'Health points.car',
       L('ui_infocard_health', 'Hit points'),
       fmtInt(armor.MaxHealthPoints),
     )
-  if (isInf && squad.length > 0)
+  if (isInf)
     push('group', L('ui_infocard_squad_count', 'Squad members count'), String(squad.length))
+  if (mob && mob.HeavyLiftWeight > 0)
+    push('Load capacity', L('ui_infocard_cargo_capacity', 'Heavy lift capacity'), fmtInt(mob.HeavyLiftWeight))
   if (unit.InfantrySlots > 0)
     push('Seats', L('ui_infocard_cargo_seats', 'Seating capacity'), fmtInt(unit.InfantrySlots))
-  if (mainSensor) {
-    // planes have no ground optics; fall back to their air-to-air optics
-    const optics =
-      mainSensor.OpticsGround > 0
-        ? mainSensor.OpticsGround
-        : Math.max(mainSensor.OpticsLowAltitude, mainSensor.OpticsHighAltitude)
-    push('Optics', L('ui_infocard_optics', 'Optics'), fmtInt(effRange(optics)))
-  }
+  // Optics: the best of ALL the unit's sensors (not the first row), ground
+  // optics for everything but the Aircrafts category, which shows its best
+  // high-altitude optics; × 2 like every range. No sensor → 0.
+  const opticsOf = (s: SensorRow) =>
+    unit.CategoryType === CATEGORY_AIRCRAFTS ? s.OpticsHighAltitude : s.OpticsGround
+  const optics = lo.sensors.length > 0 ? Math.max(...lo.sensors.map(opticsOf)) : 0
+  push('Optics', L('ui_infocard_optics', 'Optics'), fmt(effRange(optics)))
   // Stealth divides enemy detection range: display 1/value (AH-1W sample:
   // data 0.8 → shown 1.25)
   push('Stealth', L('ui_infocard_stealth', 'Stealth'), fmt(lo.stealth > 0 ? 1 / lo.stealth : 0))
   if (mob) {
-    push(`Forward speed.${cls}`, L('ui_infocard_speed_forward', 'Forward speed'), fmtInt(mob.MaxSpeedRoad))
-    if ((isHel || isAir) && mob.Agility > 0)
-      push(`Agility turn rate.${isAir ? 'air' : 'hel'}`, L('ui_infocard_agility', 'Agility'), fmtInt(mob.Agility))
-    else if (mob.MaxSpeedReverse > 0)
-      push('Speed backwards.car', L('ui_infocard_speed_back', 'Reverse speed'), fmtInt(mob.MaxSpeedReverse))
+    // Planes fly at their fly preset's MaxSpeed (m/s → km/h, steps of 5);
+    // the mobility row's road speed means nothing for them.
+    const preset = mob.FlyPresetId ? db.flyPresets.get(mob.FlyPresetId) : undefined
+    const speed =
+      unit.Type === TYPE_AIRCRAFT
+        ? planeSpeed(preset)
+        : unit.Type === TYPE_SHIP
+          ? mob.MaxSpeedWater
+          : mob.MaxSpeedRoad
+    push(`Forward speed.${cls}`, L('ui_infocard_speed_forward', 'Forward speed'), fmt(speed))
+    if (unit.Type === TYPE_VEHICLE)
+      push('Speed backwards.car', L('ui_infocard_speed_back', 'Reverse speed'), fmt(mob.MaxSpeedReverse))
+    if (unit.Type === TYPE_HELICOPTER)
+      push('Agility turn rate.hel', L('ui_infocard_agility', 'Agility'), fmt(mob.Agility))
+    if (unit.Type === TYPE_AIRCRAFT) {
+      // planes show a turn radius in metres instead of agility, then fuel
+      if (preset) {
+        const radius = roundHalfEven(effRange(planeTurnRadius(preset.MaxSpeedYaw, preset.MaxSpeed)))
+        push(
+          'Agility turn rate.air',
+          L('ui_infocard_plane_turn_radius', 'Turn radius'),
+          String(Math.trunc(radius / PLANE_STAT_STEP) * PLANE_STAT_STEP),
+        )
+      }
+      push('Fuel', L('ui_infocard_fuel', 'Fuel'), fmt(mob.LoiteringTime))
+    }
   }
-  // Infantry carry no meaningful unit.Weight (always 1); the card shows the
-  // squad's transport weight = members × per-soldier weight.
-  const weightValue = isInf ? squad.length * INFANTRY_WEIGHT_PER_SOLDIER : unit.Weight
-  push('Weight', L('ui_infocard_weight', 'Weight'), fmtInt(weightValue))
+  // Weight is listed for infantry and ground vehicles only. Infantry carry no
+  // meaningful unit.Weight (always 1); the card shows the squad's transport
+  // weight = members × per-soldier weight.
+  if (isInf || unit.Type === TYPE_VEHICLE) {
+    const weightValue = isInf ? squad.length * INFANTRY_WEIGHT_PER_SOLDIER : unit.Weight
+    push('Weight', L('ui_infocard_weight', 'Weight'), fmtInt(weightValue))
+  }
 
   // One Ability row can carry several features (e.g. "Sprint Smoke",
   // "ECM Plane 20" = decoys + ECM) — the game renders one chip per feature.
@@ -670,10 +790,22 @@ function buildWeaponModel(db: GameDb, unit: UnitRow, mw: MergedWeapon): WeaponMo
       value: `${minMax(w.MagazineReloadTimeMin, w.MagazineReloadTimeMax)} sec`,
     })
 
+  // Planes whose weapon fires missiles or bombs get the game's dedicated
+  // munitions row (UnitWeaponCompactInfo, isAircraft): no range/count pills,
+  // and accuracy instead of target icons for ground-aimed munitions.
+  const firstAmmo = ammoRows.length ? db.ammunitions.get(ammoRows[0]!.ammunitionId) : undefined
+  const planeMunitions = isAir && !!firstAmmo && firstAmmo.TrajectoryType >= SELF_PROPELLED_TRAJECTORY_MIN
   const ammo = ammoRows.map((r) => {
     const a = db.ammunitions.get(r.ammunitionId)
-    return buildAmmoModel(db, a ?? null, r.quantity)
+    return buildAmmoModel(db, a ?? null, r.quantity, w, planeMunitions)
   })
+
+  // Main guns list their practical rate of fire under the weapon
+  // (UnitWeaponCompactInfo: WeaponHelper.RateOfFire(weapon, 1) per minute).
+  const rateOfFire =
+    w.Type === WEAPON_MAIN_GUN && !canDisplayDps(w.Type)
+      ? `${fmt(roundToMultiple(rateOfFireSecond(w, 1) * 60))}/min`
+      : undefined
 
   // A plane's missiles/bombs hide their ammo count pill (the weapon icon
   // already IS the munition — see AmmoModel.selfPropelled), so the weapon badge
@@ -695,10 +827,17 @@ function buildWeaponModel(db: GameDb, unit: UnitRow, mw: MergedWeapon): WeaponMo
     newTraits,
     stats,
     ammo,
+    ...(rateOfFire ? { rateOfFire } : {}),
   }
 }
 
-function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): AmmoModel {
+function buildAmmoModel(
+  db: GameDb,
+  a: AmmunitionRow | null,
+  quantity: number,
+  weapon: WeaponRow,
+  planeMunitions = false,
+): AmmoModel {
   if (!a) {
     return {
       icon: null,
@@ -715,6 +854,9 @@ function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): 
   }
   const L = (key: string, fallback: string) => db.cardLocOr(key, fallback)
 
+  // Target-type chips in the order of UnitAmmoCompactInfo.SetTargetTraits
+  // (projectiles before aircraft; only the Projectile bit counts), then the
+  // ammo traits of SetAmmoTraits.
   const traits: TraitChip[] = []
   if (a.TargetType & UnitType.Infantry)
     traits.push({ icon: 'Target Type Infantry Icon', tooltip: L('ui_infocard_ammo_target_infantry', 'Target - infantry') })
@@ -722,14 +864,20 @@ function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): 
     traits.push({ icon: 'Target Type Vehicles Icon', tooltip: L('ui_infocard_ammo_target_vehicles', 'Target - vehicles') })
   if (a.TargetType & UnitType.Helicopter)
     traits.push({ icon: 'Target Type Helicopters Icon', tooltip: L('ui_infocard_ammo_target_helicopters', 'Target - helicopters') })
+  if (a.TargetType & UnitType.Projectile)
+    traits.push({ icon: 'Target Type Missiles Icon', tooltip: L('ui_infocard_ammo_target_missiles', 'Target - missiles') })
   if (a.TargetType & UnitType.Aircraft)
     traits.push({ icon: 'Target Type Aircrafts Icon', tooltip: L('ui_infocard_ammo_target_air', 'Target - aircraft') })
-  if (a.TargetType & (UnitType.Projectile | UnitType.SEADMissile | UnitType.CruiseMissile))
-    traits.push({ icon: 'Target Type Missiles Icon', tooltip: L('ui_infocard_ammo_target_missiles', 'Target - missiles') })
-  if (a.TopArmorAttack)
-    traits.push({ icon: 'Top Attack Type Icon', tooltip: L('ui_infocard_ammo_top_attack', 'Top armor damage') })
   if (a.LaserGuided)
     traits.push({ icon: 'Laser designation', tooltip: L('ui_infocard_ammo_laser', 'Laser guided') })
+  if (isTopArmorAttack(a))
+    traits.push({ icon: 'Top Attack Type Icon', tooltip: L('ui_infocard_ammo_top_attack', 'Top armor damage') })
+  // NoDamageFalloff area munitions: burning ones are napalm, the rest cluster
+  // (Ammunitions.IsNapalm / IsClusterAmmo)
+  if (a.NoDamageFalloff && (a.DamageOverTimeDuration ?? 0) > 0)
+    traits.push({ icon: 'Napalm_Icon', tooltip: L('ui_infocard_ammo_napalm', 'Napalm') })
+  else if (a.NoDamageFalloff)
+    traits.push({ icon: 'Claster_Icon', tooltip: L('ui_infocard_ammo_cluster', 'Cluster munition') })
 
   // Guidance (Ammunitions.Seeker): pre-colored chips for compact + a joined
   // label for the expanded "Guidance" text row. New style only (rendered so).
@@ -756,9 +904,18 @@ function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): 
       L('ui_infocard_ammo_trajectory', 'Shell trajectory'),
       db.cardLocOr(TrajectoryLocKey[a.TrajectoryType], TrajectoryType[a.TrajectoryType]!),
     )
+  // Fast-firing weapons list damage per second (rate of fire × damage per
+  // hit), everything else the damage per hit; both rounded to 0.05.
+  const dps = canDisplayDps(weapon.Type)
+  const damageValue = dps
+    ? `${fmt(roundToMultiple(rateOfFireSecond(weapon) * a.Damage))}/s`
+    : fmt(roundToMultiple(a.Damage))
   if (bestRange > 0)
     push(L('ui_infocard_ammo_effective_range', 'Effective range'), `${fmtInt(effRange(bestRange))} m`)
-  push(L('ui_infocard_ammo_damage', 'Damage'), fmt(a.Damage))
+  push(
+    dps ? L('ui_infocard_ammo_damage_per_second', 'Damage per second') : L('ui_infocard_ammo_damage', 'Damage'),
+    damageValue,
+  )
   if (a.HealthAOERadius > 0)
     push(L('ui_infocard_ammo_radius_blast', 'Blast radius'), `${fmtInt(effRange(a.HealthAOERadius))} m`)
   if (a.DispersionHorizontalRadius > 0 || a.DispersionVerticalRadius > 0)
@@ -766,18 +923,32 @@ function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): 
       L('ui_infocard_ammo_dispersion', 'Dispersion'),
       `V: ${fmt(effRange(a.DispersionVerticalRadius), 1)}m / H: ${fmt(effRange(a.DispersionHorizontalRadius), 1)}m`,
     )
-  if (a.PenetrationAtMinRange > 0)
+  // Penetration reads "at max range - at point blank" (the max-range value
+  // first), or one value when both are equal.
+  if (a.PenetrationAtMinRange > 0 || a.PenetrationAtGroundRange > 0) {
+    const atRange = fmt(a.PenetrationAtGroundRange)
+    const pointBlank = fmt(a.PenetrationAtMinRange)
     push(
       L('ui_infocard_ammo_penetration', 'Penetration'),
-      `${minMax(Math.min(a.PenetrationAtGroundRange, a.PenetrationAtMinRange), Math.max(a.PenetrationAtGroundRange, a.PenetrationAtMinRange), 0)} mm ${armorTypeName}`.trim(),
+      `${atRange === pointBlank ? atRange : `${atRange} - ${pointBlank}`} mm ${armorTypeName}`.trim(),
     )
+  }
   if (a.SupplyCost > 0)
     push(L('ui_infocard_ammo_supply_cost', 'Supply weight'), `${fmt(a.SupplyCost)} kg`)
+
+  // Third compact column: trait icons for direct fire and guided missiles,
+  // the accuracy value for everything else. Plane missiles/bombs show accuracy
+  // only when aimed at the ground.
+  const showAccuracy = planeMunitions
+    ? a.TargetType === TARGET_GROUND
+    : !TRAIT_COLUMN_TRAJECTORIES.has(a.TrajectoryType)
 
   return {
     icon: a.HUDIcon,
     name: db.cardLoc(a.HUDName) || a.Name || 'Ammo',
-    quantity: `x${fmtInt(quantity)}`,
+    // the count pill shows rounds: stored quantity × HUDMultiplier (machine
+    // gun belts are stored in bursts of 5, so a PKT's 400 shows as 2000)
+    quantity: `x${fmtInt(quantity * (a.HUDMultiplier || 1))}`,
     rangePill: bestRange > 0 ? `${fmtInt(effRange(bestRange))}m` : EMPTY_VALUE,
     traits,
     guidance,
@@ -785,16 +956,20 @@ function buildAmmoModel(db: GameDb, a: AmmunitionRow | null, quantity: number): 
     selfPropelled: a.TrajectoryType >= SELF_PROPELLED_TRAJECTORY_MIN,
     stats,
     compact: {
-      // Zero/absent numeric stats show "0" rather than "-" (e.g. SSO's
-      // Flashbang has no penetration or dispersion).
-      penetration: a.PenetrationAtMinRange > 0 ? fmtInt(a.PenetrationAtMinRange) : '0',
-      damage: fmt(a.Damage),
-      accuracy: a.Seeker
-        ? '100%'
-        : a.DispersionHorizontalRadius > 0
-          ? `${fmt(effRange(a.DispersionHorizontalRadius), 1)}m`
-          : '0',
+      // The game's compact row shows the penetration at MAXIMUM range
+      // (PenetrationAtGroundRange) — T-90M's Svinets-1 reads 450, not its
+      // 720 point-blank value. Zero shows "0" (e.g. SSO's Flashbang).
+      penetration: fmt(a.PenetrationAtGroundRange),
+      damage: damageValue,
+      accuracy: showAccuracy
+        ? `${fmt(effRange(a.DispersionHorizontalRadius))}m`
+        : a.Seeker
+          ? '100%'
+          : a.DispersionHorizontalRadius > 0
+            ? `${fmt(effRange(a.DispersionHorizontalRadius), 1)}m`
+            : '0',
       isHeat,
+      showAccuracy,
     },
   }
 }

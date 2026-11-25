@@ -167,6 +167,8 @@ export interface AmmunitionRow {
   ResupplyTime: number
   Damage: number
   StressDamage: number
+  /** burn time of napalm-type munitions (Ammunitions.IsNapalm vs IsClusterAmmo) */
+  DamageOverTimeDuration: number
   TargetType: number
   ArmorTargeted: number
   PenetrationAtMinRange: number
@@ -190,6 +192,9 @@ export interface AmmunitionRow {
   LaserGuided: boolean
   CanBeIntercepted: boolean
   TrajectoryType: number
+  /** with OverflyHeight, part of the game's IsTopArmorArmorAttack getter */
+  LoftAngle: number
+  OverflyHeight: number
 }
 
 export interface ModificationRow {
@@ -288,9 +293,42 @@ export interface SquadMemberRow {
   DeathPriority: number
 }
 
+export interface SpecializationRow {
+  Id: number
+  CountryId: number
+  Name: string | null
+  /** localization key, e.g. "ui_spec_usmc_name" */
+  UIName: string | null
+  Icon: string | null
+  ShowInHangar: boolean
+}
+/** a unit's slot in a specialization's arsenal */
+export interface SpecializationAvailabilityRow {
+  Id: number
+  SpecializationId: number
+  UnitId: number
+}
+/** a transport offered with an availability row (BTR, Humvee, Bradley…) */
+export interface TransportAvailabilityRow {
+  Id: number
+  SpecializationAvailabilityId: number
+  UnitId: number
+}
+/** flight model of a plane (Mobility.FlyPresetId); MaxSpeed is in m/s */
+export interface PlaneFlyPresetRow {
+  Id: number
+  Name: string | null
+  MaxSpeed: number
+  MaxSpeedYaw: number
+}
+
 export interface Tables {
   Units: UnitRow[]
   Countries: CountryRow[]
+  Specializations: SpecializationRow[]
+  SpecializationAvailabilities: SpecializationAvailabilityRow[]
+  TransportAvailabilities: TransportAvailabilityRow[]
+  PlaneFlyPresets: PlaneFlyPresetRow[]
   Armors: ArmorRow[]
   Mobility: MobilityRow[]
   Sensors: SensorRow[]
