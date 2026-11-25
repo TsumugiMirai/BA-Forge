@@ -556,8 +556,20 @@ span.hero-portrait { position: absolute; inset: 0; }
    column room for damage-per-second values ("12.75/s") */
 .bottom-compact-bar.new .compact-grid { grid-template-columns: 1fr 40px 52px 72px; }
 .bottom-compact-bar.new .compact-stat { white-space: nowrap; }
-/* new style: a main gun's practical rate of fire under its silhouette */
-.compact-weapon-rof { font-size: 10px; font-weight: 600; color: #e7f8e5; white-space: nowrap; }
+/* new style: a main gun's practical rate of fire sits at the bottom-right of
+   its silhouette, on the same row as the trait icons at the bottom-left
+   (checked against an in-game T-90M card) */
+.compact-weapon-rof {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  color: #e7f8e5;
+  white-space: nowrap;
+}
 
 /* new style: weapon trait icons (Suppressed/CQC/static/autoload) overlaid on
    the bottom-left of the compact silhouette, as in game */
