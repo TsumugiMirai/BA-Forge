@@ -48,9 +48,11 @@ export class GameDb {
   constructor(
     readonly tables: Tables,
     readonly localization: Record<string, string>,
-    /** English strings — the card always renders these (in-game cards are not
-     *  localized yet); `localization` is the UI language. */
-    readonly engLocalization: Record<string, string> = localization,
+    /** strings the card renders: the UI language, with English for keys the
+     *  game leaves untranslated (the in-game card is localized too — the
+     *  Chinese client labels it 正面/侧面/穿深/伤害…; unit, weapon and ammo
+     *  names are raw strings, not keys, so they stay as in game) */
+    readonly cardLocalization: Record<string, string> = localization,
   ) {
     // The game resolves localization keys case-insensitively: the JSON keys
     // are all lowercase while DB references are mixed case
@@ -58,8 +60,8 @@ export class GameDb {
     this.locLower = new Map(
       Object.entries(localization).map(([k, v]) => [k.toLowerCase(), v]),
     )
-    this.engLower = new Map(
-      Object.entries(engLocalization).map(([k, v]) => [k.toLowerCase(), v]),
+    this.cardLower = new Map(
+      Object.entries(cardLocalization).map(([k, v]) => [k.toLowerCase(), v]),
     )
     this.units = indexById(tables.Units)
     this.countries = indexById(tables.Countries)
@@ -131,7 +133,7 @@ export class GameDb {
   unitSpecs: Map<number, Set<number>>
 
   private locLower: Map<string, string>
-  private engLower: Map<string, string>
+  private cardLower: Map<string, string>
   private searchText?: Map<number, string>
 
   /** UI-language translation (case-insensitive); falls back to the key. */
@@ -140,17 +142,18 @@ export class GameDb {
     return this.localization[key] ?? this.locLower.get(key.toLowerCase()) ?? key
   }
 
-  /** English translation for card content (cards are not localized in game). */
+  /** Card-content translation in the UI language (English where the game
+   *  has no translation); falls back to the key, so raw names pass through. */
   cardLoc(key: string | null | undefined): string {
     if (!key) return ''
-    return this.engLocalization[key] ?? this.engLower.get(key.toLowerCase()) ?? key
+    return this.cardLocalization[key] ?? this.cardLower.get(key.toLowerCase()) ?? key
   }
 
-  /** English translation with explicit fallback; strings with tooltip text
-   *  after a newline are trimmed to their first line (card labels). */
+  /** Card-content translation with explicit fallback; strings with tooltip
+   *  text after a newline are trimmed to their first line (card labels). */
   cardLocOr(key: string | null | undefined, fallback: string): string {
     const v = key
-      ? (this.engLocalization[key] ?? this.engLower.get(key.toLowerCase()))
+      ? (this.cardLocalization[key] ?? this.cardLower.get(key.toLowerCase()))
       : undefined
     const s = v ?? fallback
     const nl = s.indexOf('\n')
@@ -235,5 +238,11 @@ export async function loadGameDb(lang = 'eng'): Promise<GameDb> {
   const tables = Object.fromEntries(
     TABLE_NAMES.map((t, i) => [t, tableArrays[i]]),
   ) as unknown as Tables
-  return new GameDb(tables, localization, engLocalization ?? localization)
+  // Card text follows the UI language like the game's own card; keys the
+  // language file leaves empty (770 in chi.json) keep the English string.
+  const cardLocalization = engLocalization ? { ...engLocalization } : localization
+  if (engLocalization)
+    for (const [key, value] of Object.entries(localization))
+      if (typeof value === 'string' && value.trim() !== '') cardLocalization[key] = value
+  return new GameDb(tables, localization, cardLocalization)
 }

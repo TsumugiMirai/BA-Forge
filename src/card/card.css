@@ -429,7 +429,9 @@ span.hero-portrait { position: absolute; inset: 0; }
   gap: 8px;
 }
 .stats-item-label { min-width: 130px; font-size: 12px; font-weight: 400; }
-.stats-item-value { flex: 1; text-align: right; font-size: 12px; font-weight: 600; }
+/* keep-all: Chinese values ("450 - 720 mm 动能伤害") wrap at the space, not
+   inside a word */
+.stats-item-value { flex: 1; text-align: right; font-size: 12px; font-weight: 600; word-break: keep-all; }
 
 .ammo-block { display: flex; flex-direction: column; gap: 2px; }
 .ammo-info {

@@ -57,8 +57,8 @@ const STRINGS = {
   loading: { eng: 'Loading unit database…', chi: '正在加载单位数据库…' },
   viewSource: { eng: 'View source on GitHub', chi: '在 GitHub 查看源代码' },
   langToggle: {
-    eng: 'UI language (cards always use in-game English)',
-    chi: '界面语言（卡片始终使用游戏内英文）',
+    eng: 'Language of the app and the card text (game wording; names stay as in game)',
+    chi: '界面与卡片文字的语言（用游戏内译名，单位和武器名保持游戏原样）',
   },
   emptyWorkspace: { eng: 'Select a unit to build its card.', chi: '选择一个单位以生成卡片。' },
 

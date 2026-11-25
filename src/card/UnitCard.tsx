@@ -642,7 +642,10 @@ function WeaponDetail({
   const editMode = useAppStore((s) => s.editMode)
   const style = useAppStore((s) => s.style)
   const lang = useAppStore((s) => s.lang)
+  const db = useAppStore((s) => s.db)
   const slots = useSlots()
+  // the game's label for the guidance row ("制导方式" in Chinese)
+  const guidanceTitle = db?.cardLocOr('ui_infocard_ammo_seeker_type', 'Guidance') ?? 'Guidance'
   return (
     <div className="weapon-detail">
       <div className="weapon-top-bar">
@@ -760,7 +763,7 @@ function WeaponDetail({
                   {/* guidance as a text row directly under "Shell trajectory" */}
                   {si === 0 && style === 'new' && a.guidanceLabel && (
                     <div className="stats-item">
-                      <span className="stats-item-label">Guidance</span>
+                      <span className="stats-item-label">{guidanceTitle}</span>
                       <EditableText
                         className="stats-item-value"
                         value={a.guidanceLabel}
@@ -776,7 +779,7 @@ function WeaponDetail({
               {/* no stats at all but guided → still show the guidance row */}
               {style === 'new' && a.guidanceLabel && a.stats.length === 0 && (
                 <div className="stats-item">
-                  <span className="stats-item-label">Guidance</span>
+                  <span className="stats-item-label">{guidanceTitle}</span>
                   <span className="stats-item-value">{a.guidanceLabel}</span>
                 </div>
               )}

@@ -16,8 +16,9 @@ export type View = 'card' | 'log'
 interface AppState {
   db: GameDb | null
   loadError: string | null
-  /** UI language (picker/variant panel); the card itself always renders the
-   *  in-game English strings — cards are not localized in the game yet. */
+  /** language of the UI and of the card text (labels, types, trajectories…
+   *  from the game's own language files; names stay as in game). Chinese by
+   *  default; the last choice is remembered in this browser. */
   lang: Lang
   selectedUnitId: number | null
   selection: VariantSelection
@@ -81,10 +82,31 @@ function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardM
   return resolveCard(db, unitId, selection)
 }
 
+const LANG_KEY = 'ba-recard.lang'
+
+/** The remembered language, Chinese when none (or storage is unavailable). */
+function initialLang(): Lang {
+  try {
+    const saved = localStorage.getItem(LANG_KEY)
+    if (saved === 'eng' || saved === 'chi') return saved
+  } catch {
+    // private window / blocked storage: fall through to the default
+  }
+  return 'chi'
+}
+
+function rememberLang(lang: Lang) {
+  try {
+    localStorage.setItem(LANG_KEY, lang)
+  } catch {
+    // not fatal: the choice just isn't remembered
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   db: null,
   loadError: null,
-  lang: 'eng',
+  lang: initialLang(),
   selectedUnitId: null,
   selection: {},
   compact: true, // the game opens cards in compact mode
@@ -112,10 +134,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   async setLang(lang) {
     if (lang === get().lang) return
     try {
-      // Only the app UI localizes; the card keeps in-game English strings,
-      // so the current card (and any manual edits) is left untouched.
       const db = await loadGameDb(lang)
-      set({ lang, db })
+      rememberLang(lang)
+      // The card text follows the language too: re-resolve the displayed
+      // card, unless it carries manual edits, which are kept as they are.
+      const { selectedUnitId, selection, dirty, card } = get()
+      const relocalize = card && !dirty && selectedUnitId != null && db.units.has(selectedUnitId)
+      set({
+        lang,
+        db,
+        ...(relocalize ? { card: resolve(db, selectedUnitId, selection), colorTarget: null } : {}),
+      })
     } catch (e) {
       set({ loadError: e instanceof Error ? e.message : String(e) })
     }
