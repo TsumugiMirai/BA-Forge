@@ -221,10 +221,23 @@ function groupBy<T>(rows: T[], key: (r: T) => number): Map<number, T[]> {
   return map
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${import.meta.env.BASE_URL}${path}`)
-  if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`)
-  return res.json() as Promise<T>
+/** Fetch a data file, retrying network errors and 5xx answers: GitHub Pages
+ *  occasionally returns a 503 for one of the ~25 files right after a deploy
+ *  (or over a flaky proxy), and one miss would otherwise fail the whole app. */
+async function fetchJson<T>(path: string, attempts = 4): Promise<T> {
+  let lastError: unknown
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 600 * i))
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}${path}`)
+      if (res.ok) return (await res.json()) as T
+      lastError = new Error(`Failed to load ${path}: ${res.status}`)
+      if (res.status < 500) break // a 404 will not fix itself
+    } catch (e) {
+      lastError = e
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Failed to load ${path}`)
 }
 
 export async function loadGameDb(lang = 'eng'): Promise<GameDb> {
