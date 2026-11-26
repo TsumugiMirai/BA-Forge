@@ -45,6 +45,21 @@ function inputOf(row: SpecRow): SpecInput {
 }
 
 const sameRef = (a: SpecUnitRef, b: SpecUnitRef) => a.source === b.source && a.id === b.id
+const refKey = (r: SpecUnitRef) => `${r.source}:${r.id}`
+
+/** `units` with `moved` taken out and put just before/after `target` */
+function moveRef(
+  units: SpecUnitRef[],
+  moved: SpecUnitRef,
+  target: SpecUnitRef,
+  side: 'before' | 'after',
+): SpecUnitRef[] {
+  const rest = units.filter((u) => !sameRef(u, moved))
+  const at = rest.findIndex((u) => sameRef(u, target))
+  if (at < 0) return units
+  rest.splice(side === 'before' ? at : at + 1, 0, moved)
+  return rest
+}
 
 interface ResolvedUnit {
   ref: SpecUnitRef
@@ -303,6 +318,17 @@ function SpecEditor(props: {
   }, [value.units, db, cardsById, lang])
   const columns = [...byCategory.entries()].filter(([cat, units]) => cat !== OTHER || units.length > 0)
 
+  // drag to reorder: units move only within their own category row; the
+  // order is the order of `units`, so it is saved with the specialization
+  const drag = useRef<{ ref: SpecUnitRef; category: number } | null>(null)
+  const [dropAt, setDropAt] = useState<{ key: string; side: 'before' | 'after' } | null>(null)
+  const endDrag = () => {
+    drag.current = null
+    setDropAt(null)
+  }
+  const reorder = (moved: SpecUnitRef, target: SpecUnitRef, side: 'before' | 'after') =>
+    onChange({ ...value, units: moveRef(value.units, moved, target, side) })
+
   const icon = value.icon ? (
     <img src={value.icon} alt="" />
   ) : (
@@ -376,14 +402,14 @@ function SpecEditor(props: {
             }}
           />
 
-          {/* units in the game's arsenal categories, one column each */}
-          <div className="spec-columns">
+          {/* one row per arsenal category; its units are cards laid out
+              left to right, dragged (or nudged with ‹ ›) to reorder */}
+          <div className="spec-cat-rows">
             {columns.map(([cat, units]) => (
-              <div key={cat} className="spec-column">
-                <div className="spec-column-head">
-                  <span>
-                    {categoryName(db, lang, cat)} <span className="picker-count">{units.length}</span>
-                  </span>
+              <div key={cat} className="spec-cat-row">
+                <div className="spec-cat-label">
+                  <span className="spec-cat-name">{categoryName(db, lang, cat)}</span>
+                  <span className="picker-count">{units.length}</span>
                   {cat !== OTHER && (
                     <button
                       className="spec-column-add"
@@ -394,30 +420,100 @@ function SpecEditor(props: {
                     </button>
                   )}
                 </div>
-                <div className="spec-column-units">
-                  {units.map((u) => (
-                    <div key={`${u.ref.source}:${u.ref.id}`} className={`spec-unit ${u.missing ? 'missing' : ''}`}>
-                      <button
-                        className="spec-unit-open"
-                        title={t(lang, 'openInEditor')}
-                        disabled={u.missing}
-                        onClick={() => props.onOpenUnit(u.ref)}
+                <div
+                  className="spec-cat-cards"
+                  onDragOver={(e) => {
+                    // empty space after the last card: drop at the row's end
+                    const dragged = drag.current
+                    if (!dragged || dragged.category !== cat || e.target !== e.currentTarget) return
+                    e.preventDefault()
+                    setDropAt(null)
+                  }}
+                  onDrop={(e) => {
+                    const dragged = drag.current
+                    if (!dragged || dragged.category !== cat || e.target !== e.currentTarget) return
+                    e.preventDefault()
+                    const last = units[units.length - 1]
+                    if (last && !sameRef(last.ref, dragged.ref)) reorder(dragged.ref, last.ref, 'after')
+                    endDrag()
+                  }}
+                >
+                  {units.map((u, i) => {
+                    const key = refKey(u.ref)
+                    const dropSide = dropAt?.key === key ? dropAt.side : null
+                    return (
+                      <div
+                        key={key}
+                        className={[
+                          'spec-unit-card',
+                          u.missing ? 'missing' : '',
+                          drag.current && refKey(drag.current.ref) === key ? 'dragging' : '',
+                          dropSide ? `drop-${dropSide}` : '',
+                        ].join(' ')}
+                        draggable
+                        onDragStart={(e) => {
+                          drag.current = { ref: u.ref, category: cat }
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/plain', key) // Firefox needs data
+                        }}
+                        onDragOver={(e) => {
+                          const dragged = drag.current
+                          if (!dragged || dragged.category !== cat) return
+                          e.preventDefault()
+                          e.stopPropagation()
+                          if (sameRef(dragged.ref, u.ref)) return setDropAt(null)
+                          const r = e.currentTarget.getBoundingClientRect()
+                          const side = e.clientX < r.left + r.width / 2 ? 'before' : 'after'
+                          if (dropAt?.key !== key || dropAt.side !== side) setDropAt({ key, side })
+                        }}
+                        onDrop={(e) => {
+                          const dragged = drag.current
+                          if (!dragged || dragged.category !== cat) return
+                          e.preventDefault()
+                          e.stopPropagation()
+                          if (dropSide && !sameRef(dragged.ref, u.ref)) reorder(dragged.ref, u.ref, dropSide)
+                          endDrag()
+                        }}
+                        onDragEnd={endDrag}
                       >
-                        {u.thumb ? <img src={u.thumb} alt="" /> : <span className="spec-unit-noimg" />}
-                        <span className="spec-unit-name">{u.name}</span>
+                        <button
+                          className="spec-unit-card-open"
+                          title={t(lang, 'openInEditor')}
+                          disabled={u.missing}
+                          onClick={() => props.onOpenUnit(u.ref)}
+                        >
+                          {u.thumb ? <img src={u.thumb} alt="" draggable={false} /> : <span className="spec-unit-noimg" />}
+                          <span className="spec-unit-card-name">{u.name}</span>
+                        </button>
                         {u.custom && <span className="spec-unit-badge">{t(lang, 'customUnit')}</span>}
-                      </button>
-                      <button
-                        className="spec-unit-remove"
-                        title={t(lang, 'remove')}
-                        onClick={() => onChange({ ...value, units: value.units.filter((r) => !sameRef(r, u.ref)) })}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          className="spec-unit-remove"
+                          title={t(lang, 'remove')}
+                          onClick={() => onChange({ ...value, units: value.units.filter((r) => !sameRef(r, u.ref)) })}
+                        >
+                          ×
+                        </button>
+                        <div className="spec-unit-move">
+                          <button
+                            title={t(lang, 'moveLeft')}
+                            disabled={i === 0}
+                            onClick={() => reorder(u.ref, units[i - 1]!.ref, 'before')}
+                          >
+                            ‹
+                          </button>
+                          <button
+                            title={t(lang, 'moveRight')}
+                            disabled={i === units.length - 1}
+                            onClick={() => reorder(u.ref, units[i + 1]!.ref, 'after')}
+                          >
+                            ›
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                   {units.length === 0 && cat !== OTHER && (
-                    <button className="spec-column-empty" onClick={() => props.onAddUnits(cat)}>
+                    <button className="spec-cat-empty" onClick={() => props.onAddUnits(cat)}>
                       {t(lang, 'addUnits')}
                     </button>
                   )}

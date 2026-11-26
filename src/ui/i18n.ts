@@ -61,6 +61,8 @@ const STRINGS = {
   },
   backToCards: { eng: '← Back to cards', chi: '← 返回卡片' },
   expandAll: { eng: 'Expand all', chi: '全部展开' },
+  moveLeft: { eng: 'Move left', chi: '左移' },
+  moveRight: { eng: 'Move right', chi: '右移' },
   collapseAll: { eng: 'Collapse all', chi: '全部折叠' },
   refresh: { eng: 'Refresh', chi: '刷新' },
   specName: { eng: 'Name', chi: '名称' },
