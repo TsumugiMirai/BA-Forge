@@ -65,6 +65,57 @@ const TRAIT_GREEN = '#7cff81'
 // Artillery 20, Mortar 30, MLRS 40) that keep their own ammo silhouette.
 const SELF_PROPELLED_TRAJECTORY_MIN = 110
 
+// Ammunitions.TrajectoryType values the game counts as missiles: a plane's
+// compact weapon row shows their range on the weapon itself (the "Distance"
+// pill of UnitWeaponCompactInfo, max of the three ranges × 2); bombs
+// (400/410) get none.
+const MISSILE_TRAJECTORIES = new Set([100, 110, 120, 200, 300, 666])
+
+/** first-seen trajectory per game icon, for cards saved before
+ *  AmmoModel.missile existed */
+const trajectoryIndex = new WeakMap<GameDb, { byAmmoIcon: Map<string, number>; byWeaponIcon: Map<string, number> }>()
+
+function trajectoriesByIcon(db: GameDb) {
+  let index = trajectoryIndex.get(db)
+  if (index) return index
+  const byAmmoIcon = new Map<string, number>()
+  for (const a of db.ammunitions.values())
+    if (a.HUDIcon && !byAmmoIcon.has(a.HUDIcon)) byAmmoIcon.set(a.HUDIcon, a.TrajectoryType)
+  const firstAmmo = new Map<number, number>()
+  for (const r of db.tables.WeaponAmmunitions) if (!firstAmmo.has(r.WeaponId)) firstAmmo.set(r.WeaponId, r.AmmunitionId)
+  const byWeaponIcon = new Map<string, number>()
+  for (const w of db.weapons.values()) {
+    const ammoId = firstAmmo.get(w.Id)
+    const a = ammoId != null ? db.ammunitions.get(ammoId) : undefined
+    if (w.HUDIcon && a && !byWeaponIcon.has(w.HUDIcon)) byWeaponIcon.set(w.HUDIcon, a.TrajectoryType)
+  }
+  index = { byAmmoIcon, byWeaponIcon }
+  trajectoryIndex.set(db, index)
+  return index
+}
+
+/** whether a game ammunition (by id) is a missile, for the card editor's
+ *  ammo picker */
+export function isMissileAmmo(db: GameDb, ammunitionId: number): boolean {
+  const a = db.ammunitions.get(ammunitionId)
+  return !!a && MISSILE_TRAJECTORIES.has(a.TrajectoryType)
+}
+
+/** Cards saved before AmmoModel.missile existed: tell missiles from bombs by
+ *  the munition's game icon, else the weapon's. Uploaded icons stay unknown
+ *  (no range pill on the weapon). Mutates `card`. */
+export function fillMissileFlags(db: GameDb, card: CardModel): CardModel {
+  const index = trajectoriesByIcon(db)
+  for (const w of card.weapons)
+    for (const a of w.ammo) {
+      if (a.missile !== undefined || !a.selfPropelled) continue
+      const trajectory =
+        (a.icon ? index.byAmmoIcon.get(a.icon) : undefined) ?? (w.icon ? index.byWeaponIcon.get(w.icon) : undefined)
+      if (trajectory !== undefined) a.missile = MISSILE_TRAJECTORIES.has(trajectory)
+    }
+  return card
+}
+
 /** Guidance descriptors for a munition, keyed by Ammunitions.Seeker. A munition
  *  can carry several (SEAD missiles like AGM-88 HARM are both anti-radiation and
  *  fire-and-forget). The sprites carry their own color (semi-active radar red,
@@ -845,6 +896,7 @@ function buildAmmoModel(
       guidance: [],
       guidanceLabel: '',
       selfPropelled: false,
+      missile: false,
       stats: [],
       compact: { penetration: '0', damage: '0', accuracy: '0', isHeat: false },
     }
@@ -957,6 +1009,7 @@ function buildAmmoModel(
     guidance,
     guidanceLabel,
     selfPropelled: a.TrajectoryType >= SELF_PROPELLED_TRAJECTORY_MIN,
+    missile: MISSILE_TRAJECTORIES.has(a.TrajectoryType),
     stats,
     compact: {
       // The game's compact row shows the penetration at MAXIMUM range

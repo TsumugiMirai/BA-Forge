@@ -1,9 +1,12 @@
 import { createContext, Fragment, useContext, useMemo, useState } from 'react'
 import type { AmmoModel, CardModel, WeaponModel } from './model'
 import {
+  EMPTY_VALUE,
   emptyWeapon,
   emptyAmmo,
   emptyTag,
+  moveIndexed,
+  movedIndex,
   removeIndexedColors,
   syncAmmoEdit,
   syncedFieldOfStat,
@@ -12,6 +15,7 @@ import { EditableText } from './EditableText'
 import { ammoIconUrl, chromeUrl, iconUrl, isUploadedImage, portraitUrl, weaponIconUrl } from '../assets'
 import { useAppStore } from '../state/store'
 import { WeaponType, WeaponTypeLocKey } from '../data/enums'
+import { isMissileAmmo } from '../data/resolve'
 import { ColorableIcon } from '../ui/ColorableIcon'
 import { PickerDialog, type PickerItem } from '../ui/PickerDialog'
 import { TAG_ICON_NAMES, prettyIconName } from '../ui/iconLibrary'
@@ -42,17 +46,101 @@ function Img({ src, className, alt, style }: {
 // Number of customizable tag-icon slots in the portrait's right column.
 const TAG_SLOTS = 4
 
+/** a weapon being dragged to a new place (edit mode): where it came from and
+ *  which row/side it would land on */
+interface WeaponDrag {
+  from: number
+  over: number | null
+  side: 'before' | 'after'
+}
+
 interface SlotCtx {
   openWeaponPicker(index: number): void
   openTagPicker(index: number): void
   openAmmoPicker(weaponIndex: number, ammoIndex: number): void
   addWeapon(): void
   removeWeapon(index: number): void
+  /** move a weapon up/down the list (its colors move with it) */
+  moveWeapon(from: number, to: number): void
   addAmmo(weaponIndex: number): void
   removeAmmo(weaponIndex: number, ammoIndex: number): void
+  weaponDrag: WeaponDrag | null
+  setWeaponDrag(drag: WeaponDrag | null): void
 }
 const SlotContext = createContext<SlotCtx | null>(null)
 const useSlots = () => useContext(SlotContext)!
+
+/** Drop side of a weapon row while another weapon is dragged over it; the
+ *  row gets a gold line on that side unless the drop would change nothing. */
+function useWeaponDrop(index: number) {
+  const slots = useSlots()
+  const drag = slots.weaponDrag
+  const landsAt = (side: 'before' | 'after') => {
+    const target = side === 'before' ? index : index + 1
+    return drag ? (drag.from < target ? target - 1 : target) : index
+  }
+  const dropProps = {
+    'data-weapon-row': index,
+    onDragOver: (e: React.DragEvent<HTMLElement>) => {
+      if (!drag) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      const r = e.currentTarget.getBoundingClientRect()
+      const side = e.clientY < r.top + r.height / 2 ? 'before' : 'after'
+      if (drag.over !== index || drag.side !== side) slots.setWeaponDrag({ ...drag, over: index, side })
+    },
+    onDrop: (e: React.DragEvent<HTMLElement>) => {
+      if (!drag) return
+      e.preventDefault()
+      const to = landsAt(drag.side)
+      slots.setWeaponDrag(null)
+      if (to !== drag.from) slots.moveWeapon(drag.from, to)
+    },
+  }
+  const dropClass = [
+    drag?.from === index ? 'dragging' : '',
+    drag && drag.over === index && landsAt(drag.side) !== drag.from ? `drop-${drag.side}` : '',
+  ].join(' ')
+  return { dropProps, dropClass }
+}
+
+/** Edit mode: ▲ / drag handle / ▼ at the left edge of a weapon row. */
+function WeaponMover({ index, count }: { index: number; count: number }) {
+  const slots = useSlots()
+  const lang = useAppStore((s) => s.lang)
+  return (
+    <div className="weapon-mover edit-chrome" onClick={(e) => e.stopPropagation()}>
+      <button title={t(lang, 'moveUp')} disabled={index === 0} onClick={() => slots.moveWeapon(index, index - 1)}>
+        ▲
+      </button>
+      <span
+        className="weapon-drag-handle"
+        title={t(lang, 'dragToReorder')}
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation()
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', `weapon:${index}`) // Firefox needs data
+          const row = e.currentTarget.closest<HTMLElement>('[data-weapon-row]')
+          if (row) e.dataTransfer.setDragImage(row, 16, 16)
+          // after the browser has taken its drag image: re-rendering inside
+          // dragstart can cancel the drag in Chrome
+          setTimeout(() => slots.setWeaponDrag({ from: index, over: null, side: 'before' }), 0)
+        }}
+        onDragEnd={() => slots.setWeaponDrag(null)}
+      >
+        ⠿
+      </span>
+      <button
+        title={t(lang, 'moveDown')}
+        disabled={index === count - 1}
+        onClick={() => slots.moveWeapon(index, index + 1)}
+      >
+        ▼
+      </button>
+    </div>
+  )
+}
 
 /** Weapon count badge; editable (number only) in edit mode. */
 function WeaponCount({ value, onChange }: { value: string; onChange(v: string): void }) {
@@ -182,6 +270,7 @@ export function UnitCard({ card }: { card: CardModel }) {
   const lang = useAppStore((s) => s.lang)
   const update = useAppStore((s) => s.updateCard)
   const [selectedWeapon, setSelectedWeapon] = useState(0)
+  const [weaponDrag, setWeaponDrag] = useState<WeaponDrag | null>(null)
   const weaponIdx = Math.min(selectedWeapon, card.weapons.length - 1)
   const weapon = card.weapons[weaponIdx] ?? null
 
@@ -242,6 +331,12 @@ export function UnitCard({ card }: { card: CardModel }) {
         c.weapons.splice(index, 1)
         removeIndexedColors(c, 'weapon.', index)
       }),
+    moveWeapon: (from, to) => {
+      if (from === to || to < 0 || to >= card.weapons.length) return
+      update((c) => moveIndexed(c, c.weapons, 'weapon.', from, to))
+      // the expanded view keeps showing the weapon it showed
+      setSelectedWeapon((sel) => movedIndex(Math.min(sel, card.weapons.length - 1), from, to))
+    },
     addAmmo: (wi) => update((c) => void c.weapons[wi]?.ammo.push(emptyAmmo())),
     removeAmmo: (wi, ai) =>
       update((c) => {
@@ -249,6 +344,8 @@ export function UnitCard({ card }: { card: CardModel }) {
         c.weapons[wi].ammo.splice(ai, 1)
         removeIndexedColors(c, `weapon.${wi}.ammo.`, ai)
       }),
+    weaponDrag,
+    setWeaponDrag,
   }
 
   function pickWeapon(weaponId: string) {
@@ -283,6 +380,8 @@ export function UnitCard({ card }: { card: CardModel }) {
         if (!slot) return
         slot.icon = a.HUDIcon
         slot.name = db.cardLoc(a.HUDName) || a.Name || slot.name
+        // a plane's missile shows its range on the weapon, a bomb does not
+        slot.missile = isMissileAmmo(db, a.Id)
       })
     setPicker(null)
   }
@@ -331,7 +430,8 @@ export function UnitCard({ card }: { card: CardModel }) {
           <div className="bottom-info-bar">
             <div className="weapon-list">
               {card.weapons.map((w, i) => (
-                <div className="weapon-list-item" key={i}>
+                <WeaponListRow key={i} index={i}>
+                  {editMode && card.weapons.length > 1 && <WeaponMover index={i} count={card.weapons.length} />}
                   <div
                     className={`weapon-list-btn ${i === weaponIdx ? 'active' : ''}`}
                     role="button"
@@ -350,7 +450,7 @@ export function UnitCard({ card }: { card: CardModel }) {
                     />
                   </div>
                   {editMode && <RemoveBtn onClick={() => slots.removeWeapon(i)} />}
-                </div>
+                </WeaponListRow>
               ))}
               {editMode && (
                 <button className="add-weapon-btn list edit-chrome" onClick={slots.addWeapon}>
@@ -811,6 +911,36 @@ function WeaponDetail({
   )
 }
 
+/** a weapon row of the compact card; in edit mode a drop target for
+ *  reordering */
+function CompactWeaponRow({ index, children }: { index: number; children: React.ReactNode }) {
+  const { dropProps, dropClass } = useWeaponDrop(index)
+  return (
+    <div className={`compact-weapon ${dropClass}`} {...dropProps}>
+      {children}
+    </div>
+  )
+}
+
+/** a weapon of the expanded card's list; in edit mode a drop target too */
+function WeaponListRow({ index, children }: { index: number; children: React.ReactNode }) {
+  const { dropProps, dropClass } = useWeaponDrop(index)
+  return (
+    <div className={`weapon-list-item ${dropClass}`} {...dropProps}>
+      {children}
+    </div>
+  )
+}
+
+/** a plane weapon firing missiles shows its first munition's range on the
+ *  weapon itself; bombs, guns and rockets do not (UnitWeaponCompactInfo) */
+function showsMissileRange(w: WeaponModel, editMode: boolean): boolean {
+  const first = w.ammo[0]
+  if (!first?.selfPropelled || !first.missile) return false
+  // an emptied pill stays reachable while editing
+  return editMode || (first.rangePill.trim() !== '' && first.rangePill !== EMPTY_VALUE)
+}
+
 function BottomCompactBar({ card }: { card: CardModel }) {
   const update = useAppStore((s) => s.updateCard)
   const editMode = useAppStore((s) => s.editMode)
@@ -844,7 +974,8 @@ function BottomCompactBar({ card }: { card: CardModel }) {
         />
       </div>
       {card.weapons.map((w, wi) => (
-        <div className="compact-weapon" key={wi}>
+        <CompactWeaponRow key={wi} index={wi}>
+          {editMode && card.weapons.length > 1 && <WeaponMover index={wi} count={card.weapons.length} />}
           <div className="compact-weapon-left">
             {editMode && <RemoveBtn className="compact-remove" onClick={() => slots.removeWeapon(wi)} />}
             <EditableText
@@ -863,6 +994,24 @@ function BottomCompactBar({ card }: { card: CardModel }) {
                 value={w.rateOfFire}
                 colorKey={`weapon.${wi}.rof`}
                 onChange={(v) => update((c) => void (c.weapons[wi]!.rateOfFire = v))}
+              />
+            )}
+            {/* a plane's missiles (air-to-air, air-to-ground, cruise) carry
+                their range on the weapon, at the bottom-right of the
+                silhouette, as in game; it is the first munition's range, so
+                it stays in step with the expanded view's effective range */}
+            {card.aircraft && showsMissileRange(w, editMode) && (
+              <EditableText
+                className="pill compact-weapon-distance"
+                value={w.ammo[0]!.rangePill}
+                colorKey={`weapon.${wi}.ammo.0.range`}
+                onChange={(v) =>
+                  update((c) => {
+                    const ammo = c.weapons[wi]!.ammo[0]!
+                    ammo.rangePill = v
+                    syncAmmoEdit(ammo, 'range', 'compact')
+                  })
+                }
               />
             )}
             {/* new-style: weapon trait icons (Suppressed/CQC, static, autoload)
@@ -1010,7 +1159,7 @@ function BottomCompactBar({ card }: { card: CardModel }) {
               </button>
             )}
           </div>
-        </div>
+        </CompactWeaponRow>
       ))}
       {editMode && (
         <button className="add-weapon-btn compact edit-chrome" onClick={slots.addWeapon}>

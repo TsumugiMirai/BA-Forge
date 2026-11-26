@@ -84,6 +84,43 @@
 /* compact ammo remove sits in the gap above the shell silhouette */
 .slot-remove.compact-ammo-remove { top: -8px; right: -2px; }
 
+/* edit mode: reorder weapons — ▲ / drag handle / ▼ at a row's left edge;
+   the dragged row dims and a gold line marks where it will land */
+.weapon-mover {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.weapon-mover button,
+.weapon-drag-handle {
+  display: block;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: rgba(16, 21, 26, 0.85);
+  color: #e8b23a;
+  font-size: 7px;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+.weapon-mover button:hover { background: #e8b23a; color: #14181c; }
+.weapon-mover button:disabled { visibility: hidden; }
+.weapon-drag-handle { font-size: 11px; color: #e7f8e5; cursor: grab; user-select: none; }
+.weapon-drag-handle:active { cursor: grabbing; }
+[data-weapon-row].dragging { opacity: 0.4; }
+[data-weapon-row].drop-before { box-shadow: inset 0 2px 0 0 #e8b23a; }
+[data-weapon-row].drop-after { box-shadow: inset 0 -2px 0 0 #e8b23a; }
+.compact-weapon { position: relative; }
+
 .weapon-icon-btn {
   appearance: none;
   background: none;
@@ -571,6 +608,16 @@ span.hero-portrait { position: absolute; inset: 0; }
   line-height: 14px;
   color: #e7f8e5;
   white-space: nowrap;
+}
+
+/* a plane's missile range, on the weapon: the game's yellow "Distance" pill
+   anchored to the bottom-right of the compact silhouette block */
+.compact-weapon-distance {
+  position: absolute;
+  right: 2px;
+  bottom: 4px;
+  z-index: 2;
+  background: var(--c-yellow);
 }
 
 /* new style: weapon trait icons (Suppressed/CQC/static/autoload) overlaid on

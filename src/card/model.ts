@@ -81,6 +81,12 @@ export interface AmmoModel {
   /** self-propelled munition (missile/cruise/ballistic/bomb) — its silhouette
    *  duplicates the weapon icon, so plane weapons drop it and its pills. */
   selfPropelled: boolean
+  /** a missile (guided, air-to-air, cruise or ballistic; not a bomb): on a
+   *  plane's compact card its range shows as a yellow pill on the weapon
+   *  itself, like the game's UnitWeaponCompactInfo "Distance". Cards saved
+   *  before this existed get it from the game icons on load
+   *  (resolve.fillMissileFlags). */
+  missile?: boolean
   /** label:value lines of the expanded ammo panel (damage model) */
   stats: StatLine[]
   /** key numbers for the compact row (pen | damage | accuracy columns) */
@@ -278,6 +284,30 @@ export function removeIndexedColors(card: CardModel, prefix: string, removed: nu
     const n = Number(m[1])
     if (n === removed) continue
     next[prefix + (n > removed ? n - 1 : n) + m[2]] = value
+  }
+  card.textColors = next
+}
+
+/** where index `n` ends up when the item at `from` moves to `to` */
+export function movedIndex(n: number, from: number, to: number): number {
+  if (n === from) return to
+  if (from < to && n > from && n <= to) return n - 1
+  if (from > to && n >= to && n < from) return n + 1
+  return n
+}
+
+/** Move `list[from]` to position `to`, carrying the indexed color overrides
+ *  (`prefix` + index + ".…", e.g. "weapon.2.ammo.0.range") along with it. */
+export function moveIndexed<T>(card: CardModel, list: T[], prefix: string, from: number, to: number) {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return
+  const [item] = list.splice(from, 1)
+  list.splice(to, 0, item!)
+  const colors = card.textColors
+  if (!colors) return
+  const next: Record<string, string> = {}
+  for (const [key, value] of Object.entries(colors)) {
+    const m = key.startsWith(prefix) ? /^(\d+)(\..+)$/.exec(key.slice(prefix.length)) : null
+    next[m ? prefix + movedIndex(Number(m[1]), from, to) + m[2] : key] = value
   }
   card.textColors = next
 }

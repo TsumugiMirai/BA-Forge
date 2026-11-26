@@ -296,6 +296,9 @@ const STRINGS = {
 
   // Card edit chrome
   remove: { eng: 'Remove', chi: '移除' },
+  moveUp: { eng: 'Move up', chi: '上移' },
+  moveDown: { eng: 'Move down', chi: '下移' },
+  dragToReorder: { eng: 'Drag to change the order', chi: '拖动调整顺序' },
   addWeapon: { eng: '+ Add weapon', chi: '+ 添加武器' },
   addWeaponShort: { eng: '+ Add', chi: '+ 添加' },
   addAmmo: { eng: '+ Add ammo', chi: '+ 添加弹药' },

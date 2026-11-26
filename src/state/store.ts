@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { GameDb } from '../data/db'
 import { loadGameDb } from '../data/db'
 import type { VariantSelection } from '../data/resolve'
-import { resolveCard } from '../data/resolve'
+import { fillMissileFlags, resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
 import { normalizeCard } from '../card/model'
 import type { LogModel } from '../log/logModel'
@@ -206,6 +206,12 @@ interface AppState {
 
 function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardModel {
   return resolveCard(db, unitId, selection)
+}
+
+/** a stored card ready for the editor: a copy brought up to the current model */
+function upgradeCard(db: GameDb | null, stored: CardModel): CardModel {
+  const card = normalizeCard(structuredClone(stored))
+  return db ? fillMissileFlags(db, card) : card
 }
 
 const LANG_KEY = 'ba-recard.lang'
@@ -456,7 +462,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       selection: entry.selection ?? {},
       compact: entry.compact,
       style: entry.style ?? get().style,
-      card: normalizeCard(structuredClone(entry.card)),
+      card: upgradeCard(get().db, entry.card),
       dirty: false,
       colorTarget: null,
       cloudLinked: null,
@@ -614,7 +620,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         selection: entry.selection ?? {},
         compact: entry.compact,
         style: entry.style ?? get().style,
-        card: normalizeCard(structuredClone(entry.card)),
+        card: upgradeCard(get().db, entry.card),
         dirty: false,
         colorTarget: null,
         cloudLinked: { id: row.id, version: row.version },
