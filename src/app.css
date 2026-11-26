@@ -85,6 +85,20 @@ body {
   border-radius: 3px;
   font-family: inherit;
 }
+/* button to the China specialization setup page (#china) */
+.china-nav {
+  background: #10151a;
+  border: 1px solid #8a6a22;
+  color: #e8b23a;
+  padding: 6px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.china-nav:hover, .china-nav.active { border-color: #e8b23a; background: #1c1a12; }
+
 /* nation chips + specialization dropdown above the category tabs */
 .picker-filters { display: flex; flex-direction: column; gap: 6px; }
 .picker-nations { display: flex; flex-wrap: wrap; gap: 4px; }

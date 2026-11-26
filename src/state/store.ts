@@ -25,6 +25,7 @@ import {
   updateCloudCard,
 } from '../cloud/cloudCards'
 import { compressCardImages } from '../cloud/compressImages'
+import { checkLogin, isRemembered, rememberLogin } from '../auth/auth'
 import type { UiStringKey } from '../ui/i18n'
 
 /** result line shown under the online library */
@@ -36,8 +37,9 @@ export interface CloudNotice {
 }
 
 export type Lang = 'eng' | 'chi'
-/** which workspace is showing: the unit card, or the kill-log editor */
-export type View = 'card' | 'log'
+/** which workspace is showing: the unit card, the kill-log editor, or the
+ *  China specialization setup page (#china) */
+export type View = 'card' | 'log' | 'china'
 
 interface AppState {
   db: GameDb | null
@@ -83,6 +85,8 @@ interface AppState {
   cloudLinked: { id: string; version: number } | null
   /** nickname stored with online cards (remembered in this browser) */
   author: string
+  /** passed the page login (src/auth); online features need it */
+  authed: boolean
 
   load(): Promise<void>
   setLang(lang: Lang): Promise<void>
@@ -117,6 +121,9 @@ interface AppState {
   cancelPending(): void
 
   setAuthor(name: string): void
+  /** check the page login; true when it matches (and remember it) */
+  login(account: string, password: string): Promise<boolean>
+  logout(): void
   /** fetch the online library list */
   refreshCloud(): Promise<void>
   /** open an online card in the editor (callers guard unsaved edits) */
@@ -177,7 +184,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   style: 'new', // the current in-game card style; Legacy is opt-in
 
   editMode: false,
-  view: 'card',
+  // …/#china opens straight on the China specialization page
+  view: typeof location !== 'undefined' && location.hash === '#china' ? 'china' : 'card',
   log: emptyLog(),
   card: null,
   dirty: false,
@@ -191,6 +199,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   cloudNotice: null,
   cloudLinked: null,
   author: initialAuthor(),
+  authed: isRemembered(),
 
   async load() {
     try {
@@ -380,6 +389,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   cancelPending() {
     set({ pendingAction: null })
+  },
+
+  async login(account, password) {
+    const ok = await checkLogin(account, password)
+    if (ok) {
+      rememberLogin(true)
+      set({ authed: true })
+    }
+    return ok
+  },
+
+  logout() {
+    rememberLogin(false)
+    set({ authed: false, cloudCards: [], cloudLinked: null, cloudNotice: null })
   },
 
   setAuthor(name) {

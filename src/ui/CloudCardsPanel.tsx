@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../state/store'
 import { cloudEnabled } from '../cloud/config'
+import { LoginForm } from './LoginForm'
 import { t } from './i18n'
 
 /**
@@ -24,12 +25,16 @@ export function CloudCardsPanel() {
   const saveCloudCard = useAppStore((s) => s.saveCloudCard)
   const removeCloudCard = useAppStore((s) => s.removeCloudCard)
   const guardEdits = useAppStore((s) => s.guardEdits)
+  const authed = useAppStore((s) => s.authed)
+  const logout = useAppStore((s) => s.logout)
+  const view = useAppStore((s) => s.view)
+  const setView = useAppStore((s) => s.setView)
   const [filter, setFilter] = useState('')
 
   const enabled = cloudEnabled()
   useEffect(() => {
-    if (enabled) void refreshCloud()
-  }, [enabled, refreshCloud])
+    if (enabled && authed) void refreshCloud()
+  }, [enabled, authed, refreshCloud])
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -40,20 +45,33 @@ export function CloudCardsPanel() {
 
   if (!enabled) return null
 
+  if (!authed)
+    return (
+      <div className="saved-panel cloud-panel">
+        <h3>{t(lang, 'cloudTitle')}</h3>
+        <LoginForm compact />
+      </div>
+    )
+
   const linkedName = cloudLinked ? cloudCards.find((c) => c.id === cloudLinked.id)?.name : undefined
 
   return (
     <div className="saved-panel cloud-panel">
       <div className="cloud-title-row">
         <h3>{t(lang, 'cloudTitle')}</h3>
-        <button
-          className="saved-action"
-          title={t(lang, 'cloudRefresh')}
-          disabled={cloudListing}
-          onClick={() => void refreshCloud()}
-        >
-          ↻
-        </button>
+        <div className="cloud-title-actions">
+          <button className="cloud-link" onClick={logout}>
+            {t(lang, 'logout')}
+          </button>
+          <button
+            className="saved-action"
+            title={t(lang, 'cloudRefresh')}
+            disabled={cloudListing}
+            onClick={() => void refreshCloud()}
+          >
+            ↻
+          </button>
+        </div>
       </div>
       <div className="saved-hint">{t(lang, 'cloudHint')}</div>
       <input
@@ -113,7 +131,12 @@ export function CloudCardsPanel() {
               className={`saved-load cloud-load ${cloudLinked?.id === c.id ? 'linked' : ''}`}
               title={t(lang, 'load')}
               disabled={cloudBusy}
-              onClick={() => guardEdits(() => void loadCloudCard(c.id))}
+              onClick={() =>
+                guardEdits(() => {
+                  void loadCloudCard(c.id)
+                  if (view !== 'card') setView('card')
+                })
+              }
             >
               <span className="saved-name">{c.name}</span>
               <span className="cloud-meta">

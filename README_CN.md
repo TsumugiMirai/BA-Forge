@@ -61,6 +61,13 @@ node scripts/extract-assets.mjs <ExportedProject 路径>
 不要填 service_role / secret key）。不填则不显示在线卡库。两人同时修改同一张卡时，后保存的一方会收到提示，不会互相覆盖；
 导入的大图片上传前会转成 WebP 以减小体积。
 
+在线功能需要先登录（`src/auth/auth.ts` 里一个共用账号，只比对账号密码的哈希）。这只是挡住随手点进来的人：
+数据库钥匙就在网页里，懂行的人能绕过。
+
+“中国专精”页（网址末尾加 `#china`）是开发用的设置页：六个预设专精，在线修改名称、图标、介绍，
+并把在线卡库的自制单位或游戏单位分配进去，每个专精单独保存，同样防止互相覆盖。
+它用 Supabase 的 `specs` 表，建表 SQL 在 `docs/specs-setup.sql`。
+
 ## 工作原理
 
 1. `loadGameDb()` 拉取全部 24 张表 + 本地化，并建立 id/外键索引。

@@ -40,6 +40,54 @@ const STRINGS = {
   },
   exportJson: { eng: 'Export JSON', chi: '导出 JSON' },
 
+  // Page login (one shared account)
+  loginTitle: { eng: 'Log in', chi: '登录' },
+  loginHint: {
+    eng: 'Log in to use the online library and the China specialization page.',
+    chi: '登录后才能使用在线卡库和中国专精页。',
+  },
+  account: { eng: 'Account', chi: '账号' },
+  password: { eng: 'Password', chi: '密码' },
+  loginButton: { eng: 'Log in', chi: '登录' },
+  loginFailed: { eng: 'Wrong account or password.', chi: '账号或密码不对。' },
+  logout: { eng: 'Log out', chi: '退出登录' },
+
+  // China specialization setup page
+  chinaPage: { eng: 'China specs', chi: '中国专精' },
+  chinaTitle: { eng: 'China specialization setup', chi: '中国专精设置' },
+  chinaHint: {
+    eng: 'Saved online and shared by everyone who logs in. Each specialization saves on its own.',
+    chi: '在线保存，登录的人都能看到和修改。每个专精单独保存。',
+  },
+  backToCards: { eng: '← Back to cards', chi: '← 返回卡片' },
+  refresh: { eng: 'Refresh', chi: '刷新' },
+  specName: { eng: 'Name', chi: '名称' },
+  specDescription: { eng: 'Description', chi: '介绍' },
+  specDescriptionHint: { eng: 'What this specialization is about…', chi: '写一段专精介绍…' },
+  changeIcon: { eng: 'Change icon…', chi: '更换图标…' },
+  removeIcon: { eng: 'Remove icon', chi: '清除图标' },
+  specUnits: { eng: 'Units', chi: '单位' },
+  addUnits: { eng: '+ Add units', chi: '+ 添加单位' },
+  specNoUnits: { eng: 'No units yet.', chi: '还没有分配单位。' },
+  revertChanges: { eng: 'Undo changes', chi: '撤销修改' },
+  specSaved: { eng: 'Saved.', chi: '已保存。' },
+  specUnsaved: { eng: 'Unsaved changes', chi: '有未保存的修改' },
+  specConflict: {
+    eng: 'Someone else saved this specialization meanwhile. Undo your changes to see their version, then redo yours.',
+    chi: '这个专精刚被别人保存过。请点“撤销修改”看最新版本，再重新修改。',
+  },
+  specsMissing: {
+    eng: 'The specialization table is not set up yet: run docs/specs-setup.sql in the Supabase SQL Editor.',
+    chi: '还没建专精表：请在 Supabase 的 SQL Editor 运行 docs/specs-setup.sql。',
+  },
+  customUnit: { eng: 'Custom', chi: '自制' },
+  deletedCard: { eng: '(deleted card)', chi: '（卡片已删除）' },
+  categoryOther: { eng: 'Other', chi: '其他' },
+  openInEditor: { eng: 'Open in the card editor', chi: '在卡片编辑器中打开' },
+  pickerGameUnits: { eng: 'Game units', chi: '游戏单位' },
+  added: { eng: 'Added', chi: '已添加' },
+  done: { eng: 'Done', chi: '完成' },
+
   // Shared online library
   cloudTitle: { eng: 'Online library', chi: '在线卡库' },
   cloudHint: {

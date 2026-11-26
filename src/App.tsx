@@ -10,8 +10,11 @@ import { UnitCard } from './card/UnitCard'
 import { LogBoard } from './log/LogBoard'
 import { logFileName } from './log/logModel'
 import { exportCardPng, exportLogPng } from './export/exportPng'
+import { ChinaSpecsPage } from './china/ChinaSpecsPage'
 import { t } from './ui/i18n'
 import './app.css'
+
+const CHINA_HASH = '#china'
 
 export default function App() {
   const { db, loadError, card, compact, style, editMode, lang, view, log, pendingAction } = useAppStore()
@@ -37,11 +40,29 @@ export default function App() {
     void load()
   }, [load])
 
+  // The China specialization page has its own address (…/BA-ReCard/#china):
+  // the store opens it when the page loads with that hash; here the hash
+  // follows the view, and back/forward (hash changes) switch the view.
+  useEffect(() => {
+    const fromHash = () => {
+      if (location.hash === CHINA_HASH) setView('china')
+      else if (useAppStore.getState().view === 'china') setView('card')
+    }
+    window.addEventListener('hashchange', fromHash)
+    return () => window.removeEventListener('hashchange', fromHash)
+  }, [setView])
+  useEffect(() => {
+    if (view === 'china' && location.hash !== CHINA_HASH) location.hash = CHINA_HASH
+    else if (view !== 'china' && location.hash === CHINA_HASH)
+      history.replaceState(null, '', location.pathname + location.search)
+  }, [view])
+
   if (loadError)
     return <div className="app-error">{t(lang, 'loadFailed')}: {loadError}</div>
   if (!db) return <div className="app-loading">{t(lang, 'loading')}</div>
 
   const isLog = view === 'log'
+  const isChina = view === 'china'
 
   async function onExport() {
     setExporting(true)
@@ -83,11 +104,19 @@ export default function App() {
             </button>
           </div>
         </div>
+        <button
+          className={`china-nav ${isChina ? 'active' : ''}`}
+          onClick={() => setView(isChina ? 'card' : 'china')}
+        >
+          {isChina ? t(lang, 'backToCards') : t(lang, 'chinaPage')}
+        </button>
         <UnitPicker />
       </aside>
 
       <main className="workspace">
-        {card || isLog ? (
+        {isChina ? (
+          <ChinaSpecsPage />
+        ) : card || isLog ? (
           <>
             <div className="toolbar">
               {/* card layout views + the log workspace */}
@@ -163,9 +192,9 @@ export default function App() {
       </main>
 
       <aside className="sidebar right">
-        {!isLog && <VariantPanel />}
-        <ColorPanel />
-        {!isLog && <SavedCardsPanel />}
+        {!isLog && !isChina && <VariantPanel />}
+        {!isChina && <ColorPanel />}
+        {!isLog && !isChina && <SavedCardsPanel />}
         {!isLog && <CloudCardsPanel />}
       </aside>
 
