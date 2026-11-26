@@ -16,6 +16,11 @@ type Notice = { kind: 'ok' | 'error'; key: UiStringKey; detail?: string }
 
 const ICON_MAX = 256
 
+/** The arsenal's unit categories in game order (Logistic has no units). */
+const CATEGORIES = [0, 1, 2, 3, 5, 6]
+/** pseudo-category for units whose template is unknown (deleted cards) */
+const OTHER = -1
+
 /** Read an image file as a square-bounded WebP data URL (≤256 px a side). */
 async function readIcon(file: File): Promise<string> {
   const url = URL.createObjectURL(file)
@@ -50,7 +55,12 @@ interface ResolvedUnit {
   missing: boolean
 }
 
-function resolveRef(db: GameDb, cards: Map<string, CloudCardMeta>, ref: SpecUnitRef, lang: 'eng' | 'chi'): ResolvedUnit {
+function resolveRef(
+  db: GameDb,
+  cards: Map<string, CloudCardMeta>,
+  ref: SpecUnitRef,
+  lang: 'eng' | 'chi',
+): ResolvedUnit {
   if (ref.source === 'card') {
     const meta = cards.get(ref.id)
     const unit = meta?.unit_id != null ? db.units.get(meta.unit_id) : undefined
@@ -58,7 +68,7 @@ function resolveRef(db: GameDb, cards: Map<string, CloudCardMeta>, ref: SpecUnit
       ref,
       name: meta?.name ?? t(lang, 'deletedCard'),
       thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
-      category: unit?.CategoryType ?? -1,
+      category: unit?.CategoryType ?? OTHER,
       custom: true,
       missing: !meta,
     }
@@ -68,16 +78,23 @@ function resolveRef(db: GameDb, cards: Map<string, CloudCardMeta>, ref: SpecUnit
     ref,
     name: unit?.HUDName ?? unit?.Name ?? `#${ref.id}`,
     thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
-    category: unit?.CategoryType ?? -1,
+    category: unit?.CategoryType ?? OTHER,
     custom: false,
     missing: !unit,
   }
 }
 
+function categoryName(db: GameDb, lang: 'eng' | 'chi', cat: number): string {
+  return cat === OTHER
+    ? t(lang, 'categoryOther')
+    : db.locOr(UnitCategoryLocKey[cat], UnitCategoryType[cat] ?? String(cat))
+}
+
 /**
- * The China specialization setup page (#china): six preset specializations,
- * each with a name, icon, description and assigned units (online library
- * cards or stock game units), saved online in the `specs` table.
+ * The China specialization setup page (#china): six preset specializations
+ * as full-width rows, collapsed to a summary until opened. An open one edits
+ * its name, icon and description and lists its units in the game's arsenal
+ * categories; everything is saved online in the `specs` table.
  */
 export function ChinaSpecsPage() {
   const lang = useAppStore((s) => s.lang)
@@ -94,9 +111,10 @@ export function ChinaSpecsPage() {
   const [drafts, setDrafts] = useState<Record<number, SpecInput>>({})
   const [notices, setNotices] = useState<Record<number, Notice | undefined>>({})
   const [saving, setSaving] = useState<Record<number, boolean>>({})
+  const [open, setOpen] = useState<Record<number, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [pageNotice, setPageNotice] = useState<Notice | null>(null)
-  const [pickerFor, setPickerFor] = useState<number | null>(null)
+  const [picker, setPicker] = useState<{ specId: number; category: number | null } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -176,7 +194,8 @@ export function ChinaSpecsPage() {
       setView('card')
     })
 
-  const pickerSpec = specs?.find((s) => s.id === pickerFor)
+  const allOpen = !!specs && specs.every((s) => open[s.id])
+  const pickerSpec = picker ? specs?.find((s) => s.id === picker.specId) : undefined
   const pickerInput = pickerSpec ? (drafts[pickerSpec.id] ?? inputOf(pickerSpec)) : null
 
   return (
@@ -187,6 +206,15 @@ export function ChinaSpecsPage() {
           <div className="saved-hint">{t(lang, 'chinaHint')}</div>
         </div>
         <div className="china-header-actions">
+          {specs && (
+            <button
+              onClick={() =>
+                setOpen(allOpen ? {} : Object.fromEntries(specs.map((s) => [s.id, true])))
+              }
+            >
+              {allOpen ? t(lang, 'collapseAll') : t(lang, 'expandAll')}
+            </button>
+          )}
           <button disabled={loading} onClick={() => void load()}>
             {t(lang, 'refresh')}
           </button>
@@ -200,30 +228,33 @@ export function ChinaSpecsPage() {
         </div>
       )}
       {loading && !specs && <div className="saved-hint">{t(lang, 'cloudLoading')}</div>}
-      <div className="spec-grid">
+      <div className="spec-list">
         {specs?.map((row) => (
           <SpecEditor
             key={row.id}
             row={row}
             value={drafts[row.id] ?? inputOf(row)}
+            open={!!open[row.id]}
             dirty={!!drafts[row.id]}
             saving={!!saving[row.id]}
             notice={notices[row.id]}
             db={db}
             cardsById={cardsById}
+            onToggle={() => setOpen((o) => ({ ...o, [row.id]: !o[row.id] }))}
             onChange={(next) => edit(row.id, next)}
             onSave={() => void save(row)}
             onRevert={() => revert(row.id)}
-            onAddUnits={() => setPickerFor(row.id)}
+            onAddUnits={(category) => setPicker({ specId: row.id, category })}
             onOpenUnit={openUnit}
           />
         ))}
       </div>
-      {pickerSpec && pickerInput && (
+      {pickerSpec && pickerInput && picker && (
         <AddUnitsDialog
           db={db}
           cards={cloudCards}
           selected={pickerInput.units}
+          initialCategory={picker.category}
           onToggle={(ref) => {
             const has = pickerInput.units.some((u) => sameRef(u, ref))
             edit(pickerSpec.id, {
@@ -231,7 +262,7 @@ export function ChinaSpecsPage() {
               units: has ? pickerInput.units.filter((u) => !sameRef(u, ref)) : [...pickerInput.units, ref],
             })
           }}
-          onClose={() => setPickerFor(null)}
+          onClose={() => setPicker(null)}
         />
       )}
     </div>
@@ -241,183 +272,222 @@ export function ChinaSpecsPage() {
 function SpecEditor(props: {
   row: SpecRow
   value: SpecInput
+  open: boolean
   dirty: boolean
   saving: boolean
   notice: Notice | undefined
   db: GameDb
   cardsById: Map<string, CloudCardMeta>
+  onToggle(): void
   onChange(next: SpecInput): void
   onSave(): void
   onRevert(): void
-  onAddUnits(): void
+  onAddUnits(category: number | null): void
   onOpenUnit(ref: SpecUnitRef): void
 }) {
-  const { row, value, dirty, saving, notice, db, cardsById, onChange } = props
+  const { row, value, open, dirty, saving, notice, db, cardsById, onChange } = props
   const lang = useAppStore((s) => s.lang)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  // assigned units grouped by arsenal category, like a deck's columns
-  const groups = useMemo(() => {
-    const resolved = value.units.map((ref) => resolveRef(db, cardsById, ref, lang))
-    const byCat = new Map<number, ResolvedUnit[]>()
-    for (const u of resolved) {
-      const list = byCat.get(u.category)
+  // assigned units by arsenal category, in game order
+  const byCategory = useMemo(() => {
+    const map = new Map<number, ResolvedUnit[]>(CATEGORIES.map((c) => [c, []]))
+    for (const ref of value.units) {
+      const u = resolveRef(db, cardsById, ref, lang)
+      const key = map.has(u.category) ? u.category : OTHER
+      const list = map.get(key)
       if (list) list.push(u)
-      else byCat.set(u.category, [u])
+      else map.set(key, [u])
     }
-    return [...byCat.entries()].sort(([a], [b]) => (a < 0 ? 99 : a) - (b < 0 ? 99 : b))
+    return map
   }, [value.units, db, cardsById, lang])
+  const columns = [...byCategory.entries()].filter(([cat, units]) => cat !== OTHER || units.length > 0)
+
+  const icon = value.icon ? (
+    <img src={value.icon} alt="" />
+  ) : (
+    <span>{(value.name || '?').slice(0, 1)}</span>
+  )
 
   return (
-    <section className={`spec-card ${dirty ? 'dirty' : ''}`}>
-      <div className="spec-head">
-        <button
-          className="spec-icon"
-          title={t(lang, 'changeIcon')}
-          onClick={() => fileInput.current?.click()}
-        >
-          {value.icon ? <img src={value.icon} alt="" /> : <span>{(value.name || '?').slice(0, 1)}</span>}
-        </button>
-        <div className="spec-head-fields">
-          <input
-            className="cloud-input spec-name"
-            aria-label={t(lang, 'specName')}
-            value={value.name}
-            maxLength={40}
-            onChange={(e) => onChange({ ...value, name: e.target.value })}
-          />
-          <div className="spec-icon-actions">
-            <button className="cloud-link" onClick={() => fileInput.current?.click()}>
-              {t(lang, 'changeIcon')}
-            </button>
-            {value.icon && (
-              <button className="cloud-link" onClick={() => onChange({ ...value, icon: null })}>
-                {t(lang, 'removeIcon')}
-              </button>
-            )}
-          </div>
-        </div>
-        <span className="spec-number">#{row.id}</span>
-      </div>
-      <input
-        ref={fileInput}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={async (e) => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (file) onChange({ ...value, icon: await readIcon(file) })
-        }}
-      />
-      <textarea
-        className="cloud-input spec-description"
-        aria-label={t(lang, 'specDescription')}
-        placeholder={t(lang, 'specDescriptionHint')}
-        value={value.description}
-        rows={3}
-        onChange={(e) => onChange({ ...value, description: e.target.value })}
-      />
-      <div className="spec-units-head">
-        <span>
-          {t(lang, 'specUnits')} <span className="picker-count">{value.units.length}</span>
+    <section className={`spec-row ${open ? 'open' : ''} ${dirty ? 'dirty' : ''}`}>
+      {/* summary bar: always shown, toggles the body */}
+      <button className="spec-summary" aria-expanded={open} onClick={props.onToggle}>
+        <span className="spec-chevron">{open ? '▾' : '▸'}</span>
+        <span className="spec-icon small">{icon}</span>
+        <span className="spec-summary-text">
+          <span className="spec-summary-name">{value.name || `#${row.id}`}</span>
+          {value.description && <span className="spec-summary-desc">{value.description}</span>}
         </span>
-        <button className="cloud-link" onClick={props.onAddUnits}>
-          {t(lang, 'addUnits')}
-        </button>
-      </div>
-      {groups.length === 0 && <div className="saved-hint">{t(lang, 'specNoUnits')}</div>}
-      {groups.map(([cat, units]) => (
-        <div key={cat} className="spec-group">
-          <div className="spec-group-label">
-            {cat >= 0 ? db.locOr(UnitCategoryLocKey[cat], UnitCategoryType[cat] ?? String(cat)) : t(lang, 'categoryOther')}
+        <span className="spec-summary-counts">
+          {columns.map(([cat, units]) => (
+            <span key={cat} className={`spec-count ${units.length ? '' : 'zero'}`}>
+              {categoryName(db, lang, cat)} <b>{units.length}</b>
+            </span>
+          ))}
+        </span>
+        {dirty && <span className="spec-dirty">{t(lang, 'specUnsaved')}</span>}
+      </button>
+
+      {open && (
+        <div className="spec-body">
+          <div className="spec-head">
+            <button className="spec-icon" title={t(lang, 'changeIcon')} onClick={() => fileInput.current?.click()}>
+              {icon}
+            </button>
+            <div className="spec-head-fields">
+              <div className="spec-name-row">
+                <input
+                  className="cloud-input spec-name"
+                  aria-label={t(lang, 'specName')}
+                  value={value.name}
+                  maxLength={40}
+                  onChange={(e) => onChange({ ...value, name: e.target.value })}
+                />
+                <button className="cloud-link" onClick={() => fileInput.current?.click()}>
+                  {t(lang, 'changeIcon')}
+                </button>
+                {value.icon && (
+                  <button className="cloud-link" onClick={() => onChange({ ...value, icon: null })}>
+                    {t(lang, 'removeIcon')}
+                  </button>
+                )}
+                <span className="spec-number">#{row.id}</span>
+              </div>
+              <textarea
+                className="cloud-input spec-description"
+                aria-label={t(lang, 'specDescription')}
+                placeholder={t(lang, 'specDescriptionHint')}
+                value={value.description}
+                rows={2}
+                onChange={(e) => onChange({ ...value, description: e.target.value })}
+              />
+            </div>
           </div>
-          <div className="spec-unit-grid">
-            {units.map((u) => (
-              <div key={`${u.ref.source}:${u.ref.id}`} className={`spec-unit ${u.missing ? 'missing' : ''}`}>
-                <button
-                  className="spec-unit-open"
-                  title={t(lang, 'openInEditor')}
-                  disabled={u.missing}
-                  onClick={() => props.onOpenUnit(u.ref)}
-                >
-                  {u.thumb ? <img src={u.thumb} alt="" /> : <span className="spec-unit-noimg" />}
-                  <span className="spec-unit-name">{u.name}</span>
-                  {u.custom && <span className="spec-unit-badge">{t(lang, 'customUnit')}</span>}
-                </button>
-                <button
-                  className="spec-unit-remove"
-                  title={t(lang, 'remove')}
-                  onClick={() =>
-                    onChange({ ...value, units: value.units.filter((r) => !sameRef(r, u.ref)) })
-                  }
-                >
-                  ×
-                </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) onChange({ ...value, icon: await readIcon(file) })
+            }}
+          />
+
+          {/* units in the game's arsenal categories, one column each */}
+          <div className="spec-columns">
+            {columns.map(([cat, units]) => (
+              <div key={cat} className="spec-column">
+                <div className="spec-column-head">
+                  <span>
+                    {categoryName(db, lang, cat)} <span className="picker-count">{units.length}</span>
+                  </span>
+                  {cat !== OTHER && (
+                    <button
+                      className="spec-column-add"
+                      title={t(lang, 'addUnits')}
+                      onClick={() => props.onAddUnits(cat)}
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
+                <div className="spec-column-units">
+                  {units.map((u) => (
+                    <div key={`${u.ref.source}:${u.ref.id}`} className={`spec-unit ${u.missing ? 'missing' : ''}`}>
+                      <button
+                        className="spec-unit-open"
+                        title={t(lang, 'openInEditor')}
+                        disabled={u.missing}
+                        onClick={() => props.onOpenUnit(u.ref)}
+                      >
+                        {u.thumb ? <img src={u.thumb} alt="" /> : <span className="spec-unit-noimg" />}
+                        <span className="spec-unit-name">{u.name}</span>
+                        {u.custom && <span className="spec-unit-badge">{t(lang, 'customUnit')}</span>}
+                      </button>
+                      <button
+                        className="spec-unit-remove"
+                        title={t(lang, 'remove')}
+                        onClick={() => onChange({ ...value, units: value.units.filter((r) => !sameRef(r, u.ref)) })}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {units.length === 0 && cat !== OTHER && (
+                    <button className="spec-column-empty" onClick={() => props.onAddUnits(cat)}>
+                      {t(lang, 'addUnits')}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
+
+          <div className="spec-actions">
+            {notice && (
+              <span className={notice.kind === 'error' ? 'saved-error' : 'cloud-ok'}>
+                {t(lang, notice.key)}
+                {notice.detail ? `: ${notice.detail}` : ''}
+              </span>
+            )}
+            <span className="spec-actions-spacer" />
+            <button disabled={!dirty || saving} onClick={props.onRevert}>
+              {t(lang, 'revertChanges')}
+            </button>
+            <button className="primary" disabled={!dirty || saving} onClick={props.onSave}>
+              {saving ? t(lang, 'cloudWorking') : t(lang, 'save')}
+            </button>
+          </div>
         </div>
-      ))}
-      <div className="spec-actions">
-        {dirty && <span className="spec-dirty">{t(lang, 'specUnsaved')}</span>}
-        {notice && (
-          <span className={notice.kind === 'error' ? 'saved-error' : 'cloud-ok'}>
-            {t(lang, notice.key)}
-            {notice.detail ? `: ${notice.detail}` : ''}
-          </span>
-        )}
-        <span className="spec-actions-spacer" />
-        <button disabled={!dirty || saving} onClick={props.onRevert}>
-          {t(lang, 'revertChanges')}
-        </button>
-        <button className="primary" disabled={!dirty || saving} onClick={props.onSave}>
-          {saving ? t(lang, 'cloudWorking') : t(lang, 'save')}
-        </button>
-      </div>
+      )}
     </section>
   )
 }
 
 /** Pick units for a specialization: custom cards from the online library or
- *  stock game units; clicking toggles a unit in or out. */
+ *  stock game units, narrowed by arsenal category; clicking toggles a unit. */
 function AddUnitsDialog(props: {
   db: GameDb
   cards: CloudCardMeta[]
   selected: SpecUnitRef[]
+  initialCategory: number | null
   onToggle(ref: SpecUnitRef): void
   onClose(): void
 }) {
   const { db, cards, selected } = props
   const lang = useAppStore((s) => s.lang)
   const [tab, setTab] = useState<'cards' | 'units'>(cards.length > 0 ? 'cards' : 'units')
+  const [category, setCategory] = useState<number | null>(props.initialCategory)
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
 
   const items = useMemo(() => {
     if (tab === 'cards')
       return cards
-        .filter((c) => !q || `${c.name}\n${c.author}`.toLowerCase().includes(q))
-        .map((c) => {
-          const unit = c.unit_id != null ? db.units.get(c.unit_id) : undefined
-          return {
-            ref: { source: 'card', id: c.id } as SpecUnitRef,
-            name: c.name,
-            sub: [c.author, unit?.HUDName].filter(Boolean).join(' · '),
-            thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
-          }
-        })
+        .map((c) => ({ c, unit: c.unit_id != null ? db.units.get(c.unit_id) : undefined }))
+        .filter(({ unit }) => category == null || unit?.CategoryType === category)
+        .filter(({ c }) => !q || `${c.name}\n${c.author}`.toLowerCase().includes(q))
+        .map(({ c, unit }) => ({
+          ref: { source: 'card', id: c.id } as SpecUnitRef,
+          name: c.name,
+          sub: [c.author, unit?.HUDName].filter(Boolean).join(' · '),
+          thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
+        }))
     return db
       .armoryUnits()
+      .filter((u) => category == null || u.CategoryType === category)
       .filter((u) => !q || db.unitSearchText(u.Id).includes(q))
       .sort((a, b) => a.CategoryType - b.CategoryType || (a.HUDName ?? '').localeCompare(b.HUDName ?? ''))
       .map((u) => ({
         ref: { source: 'unit', id: u.Id } as SpecUnitRef,
         name: u.HUDName ?? u.Name ?? `#${u.Id}`,
-        sub: db.locOr(UnitCategoryLocKey[u.CategoryType], UnitCategoryType[u.CategoryType] ?? ''),
+        sub: categoryName(db, lang, u.CategoryType),
         thumb: thumbnailUrl(u.ThumbnailFileName),
       }))
-  }, [tab, q, cards, db])
+  }, [tab, q, category, cards, db, lang])
 
   return (
     <div className="crop-overlay" onClick={props.onClose}>
@@ -434,6 +504,16 @@ function AddUnitsDialog(props: {
           <button className="primary" onClick={props.onClose}>
             {t(lang, 'done')}
           </button>
+        </div>
+        <div className="picker-tabs">
+          <button className={category == null ? 'active' : ''} onClick={() => setCategory(null)}>
+            {t(lang, 'allCategories')}
+          </button>
+          {CATEGORIES.map((c) => (
+            <button key={c} className={category === c ? 'active' : ''} onClick={() => setCategory(c)}>
+              {categoryName(db, lang, c)}
+            </button>
+          ))}
         </div>
         <input
           className="picker-search"

@@ -60,6 +60,8 @@ const STRINGS = {
     chi: '在线保存，登录的人都能看到和修改。每个专精单独保存。',
   },
   backToCards: { eng: '← Back to cards', chi: '← 返回卡片' },
+  expandAll: { eng: 'Expand all', chi: '全部展开' },
+  collapseAll: { eng: 'Collapse all', chi: '全部折叠' },
   refresh: { eng: 'Refresh', chi: '刷新' },
   specName: { eng: 'Name', chi: '名称' },
   specDescription: { eng: 'Description', chi: '介绍' },
