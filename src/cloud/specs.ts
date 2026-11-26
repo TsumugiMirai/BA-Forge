@@ -3,7 +3,7 @@
 // specialization's name, icon (image data URL), description and assigned
 // units. Schema: server/schema.sql; missing rows are created by ensureSpecs.
 
-import { CloudConflictError, endpoint, headers, request } from './rest'
+import { CloudConflictError, endpoint, headers, request, rpc } from './rest'
 
 /** a unit assigned to a specialization: an online library card (custom
  *  unit) or a stock game unit */
@@ -19,6 +19,8 @@ export interface SpecRow {
   /** bumped by a trigger on every update; used to detect concurrent edits */
   version: number
   updated_at: string
+  /** display name of whoever saved it last (set by the server) */
+  editor?: string
 }
 
 export type SpecInput = Pick<SpecRow, 'name' | 'icon' | 'description' | 'units'>
@@ -65,4 +67,28 @@ export async function saveSpec(id: number, version: number, input: SpecInput): P
   )
   if (!rows[0]) throw new CloudConflictError()
   return rows[0]
+}
+
+/** Put an online card into exactly these specializations (none = []); the
+ *  server changes the rows in one go, so nothing else edited is lost. */
+export async function setCardSpecs(cardId: string, specIds: number[]): Promise<void> {
+  await rpc<unknown>('set_card_specs', { card_id: cardId, spec_ids: specIds })
+}
+
+export const isCardRef = (ref: SpecUnitRef, cardId: string) =>
+  ref.source === 'card' && ref.id.toLowerCase() === cardId.toLowerCase()
+
+/** the specializations an online card is in, by card id */
+export function specsByCard(specs: SpecRow[] | null): Map<string, number[]> {
+  const map = new Map<string, number[]>()
+  for (const spec of specs ?? [])
+    for (const ref of spec.units ?? [])
+      if (ref.source === 'card') {
+        const key = ref.id.toLowerCase()
+        const list = map.get(key)
+        if (list) {
+          if (!list.includes(spec.id)) list.push(spec.id)
+        } else map.set(key, [spec.id])
+      }
+  return map
 }

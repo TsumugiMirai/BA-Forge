@@ -17,8 +17,6 @@ export function UnitPicker() {
   const selectedUnitId = useAppStore((s) => s.selectedUnitId)
   const selectUnit = useAppStore((s) => s.selectUnit)
   const guardEdits = useAppStore((s) => s.guardEdits)
-  const view = useAppStore((s) => s.view)
-  const setView = useAppStore((s) => s.setView)
   const [category, setCategory] = useState<number>(2) // Vehicles tab
   const [query, setQuery] = useState('')
   const [countryId, setCountryId] = useState<number | null>(null)
@@ -175,13 +173,7 @@ export function UnitPicker() {
             <button
               key={u.Id}
               className={`picker-item ${u.Id === selectedUnitId ? 'active' : ''}`}
-              onClick={() =>
-                guardEdits(() => {
-                  selectUnit(u.Id)
-                  // from the China setup page, picking a unit opens its card
-                  if (view === 'china') setView('card')
-                })
-              }
+              onClick={() => guardEdits(() => selectUnit(u.Id))}
               title={u.HUDName ?? undefined}
             >
               <UnitThumb file={u.ThumbnailFileName} name={u.HUDName ?? u.Name ?? ''} />

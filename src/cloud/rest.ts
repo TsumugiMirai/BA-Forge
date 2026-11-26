@@ -1,6 +1,7 @@
 // Shared plumbing for the server's REST API (PostgREST, see server/): the
 // `cards` (online card library) and `specs` (China specialization setup)
-// tables. Every request carries the login token from src/auth.
+// tables and the account functions under /rpc. Every request carries the
+// login token from src/auth.
 
 import { authHeader, loginRejected } from '../auth/auth'
 import { CLOUD_URL } from './config'
@@ -23,6 +24,18 @@ export class CloudMissingTableError extends Error {
 export class CloudAuthError extends Error {
   constructor() {
     super('login expired')
+  }
+}
+
+/** any other refused request; `reason` is the server's short code, e.g.
+ *  "not_owner" or "admin" (the message of a PTxxx error in server/schema.sql) */
+export class CloudHttpError extends Error {
+  readonly status: number
+  readonly reason: string
+  constructor(status: number, reason: string, detail: string) {
+    super(`HTTP ${status}${detail ? `: ${detail}` : ''}`)
+    this.status = status
+    this.reason = reason
   }
 }
 
@@ -49,19 +62,30 @@ export async function request<T>(url: string, init: RequestInit, table = ''): Pr
     if (!res.ok) {
       let detail = text
       let code = ''
+      let message = ''
       try {
         const body = JSON.parse(text) as { message?: string; hint?: string; code?: string }
         code = body.code ?? ''
+        message = body.message ?? ''
         detail = [body.message, body.hint].filter(Boolean).join(' — ') || text
       } catch {
         // keep the raw text
       }
       // PGRST205: "Could not find the table … in the schema cache"
       if (table && (code === 'PGRST205' || code === '42P01')) throw new CloudMissingTableError(table)
-      throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
+      throw new CloudHttpError(res.status, message, detail)
     }
     return (text ? JSON.parse(text) : null) as T
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** Call a server function (POST /rpc/<name>) with named arguments. */
+export function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  return request<T>(endpoint(`rpc/${name}`), {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(args),
+  })
 }

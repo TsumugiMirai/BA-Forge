@@ -25,12 +25,24 @@ import {
   updateCloudCard,
 } from '../cloud/cloudCards'
 import { compressCardImages } from '../cloud/compressImages'
-import { CloudAuthError } from '../cloud/rest'
-import type { LoginResult } from '../auth/auth'
-import { isLoggedIn, login as serverLogin, logout as forgetLogin, onLoginExpired } from '../auth/auth'
+import { CloudAuthError, CloudHttpError, CloudMissingTableError } from '../cloud/rest'
+import type { Account, LoginResult, RegisterInput, RegisterResult } from '../auth/auth'
+import {
+  currentAccount,
+  isLoggedIn,
+  login as serverLogin,
+  logout as forgetLogin,
+  onLoginExpired,
+  register as serverRegister,
+  rememberAccount,
+} from '../auth/auth'
+import type { PasswordChangeResult } from '../cloud/account'
+import { changePassword as serverChangePassword, fetchMe, saveDisplayName } from '../cloud/account'
+import type { SpecRow } from '../cloud/specs'
+import { ensureSpecs, listSpecs, setCardSpecs as serverSetCardSpecs } from '../cloud/specs'
 import type { UiStringKey } from '../ui/i18n'
 
-/** result line shown under the online library */
+/** result line shown next to the online actions */
 export interface CloudNotice {
   kind: 'ok' | 'error'
   key: UiStringKey
@@ -39,9 +51,19 @@ export interface CloudNotice {
 }
 
 export type Lang = 'eng' | 'chi'
-/** which workspace is showing: the unit card, the kill-log editor, or the
- *  China specialization setup page (#china) */
-export type View = 'card' | 'log' | 'china'
+/** which page is showing: the card maker (unit card, or its kill-log
+ *  editor), the card library (#library) or the China specialization setup
+ *  (#china) */
+export type View = 'card' | 'log' | 'library' | 'china'
+/** the card maker's two workspaces */
+export type WorkView = 'card' | 'log'
+
+/** the page an address opens (…/BA-ReCard/#library), null for the card maker */
+export function viewFromHash(hash: string): View | null {
+  if (hash === '#china') return 'china'
+  if (hash === '#library') return 'library'
+  return null
+}
 
 interface AppState {
   db: GameDb | null
@@ -58,8 +80,10 @@ interface AppState {
    *  everything both styles need. */
   style: CardStyle
   editMode: boolean
-  /** current workspace: unit card or kill-log editor */
+  /** current page */
   view: View
+  /** what the card maker shows when it is opened again: card or kill log */
+  workView: WorkView
   /** the kill-log editor's model (edits live here, parallel to `card`) */
   log: LogModel
   /** the card as displayed; starts as the resolved model, then absorbs edits */
@@ -85,13 +109,32 @@ interface AppState {
   /** the online entry the displayed card came from, so Save updates it in
    *  place (version guards against overwriting someone else's newer save) */
   cloudLinked: { id: string; version: number } | null
-  /** nickname stored with online cards (remembered in this browser) */
-  author: string
-  /** passed the page login (src/auth); online features need it */
+
+  /** the logged-in account (null when logged out, and briefly for a login
+   *  remembered from before accounts had names) */
+  account: Account | null
+  /** logged in (src/auth); the library and China pages need it */
   authed: boolean
   /** the server turned the remembered login down (it expired, or the
    *  password was changed); the login form says so */
   loginExpired: boolean
+  /** the password used to log in is shorter than new ones may be (the old
+   *  shared account); the account dialog suggests changing it */
+  weakPassword: boolean
+  /** the login/register dialog, opened from the header */
+  authDialog: 'login' | 'register' | null
+  /** the account dialog (name, password, admin page) */
+  accountDialog: boolean
+
+  /** the six China specializations (null until loaded) */
+  specs: SpecRow[] | null
+  specsLoading: boolean
+  specsNotice: CloudNotice | null
+  /** specializations picked for the displayed card before it is uploaded;
+   *  the upload puts it into them */
+  pendingSpecIds: number[]
+  /** a card's specializations are being saved */
+  specBusy: boolean
 
   load(): Promise<void>
   setLang(lang: Lang): Promise<void>
@@ -116,27 +159,49 @@ interface AppState {
   resetEdits(): void
   /** snapshot the displayed card into the saved list (overwrites same name) */
   saveCard(): void
+  /** save the displayed card where it came from: its online entry when it
+   *  has one (and someone is logged in), else this browser; true on success */
+  saveCurrent(): Promise<boolean>
   /** add an entry parsed from an exported .json file (overwrites same name) */
   importSavedCard(entry: SavedCard): void
   loadSavedCard(id: string): void
   deleteSavedCard(id: string): void
+  /** upload a card saved in this browser to the online library as a new card */
+  uploadSavedCard(id: string): Promise<void>
   /** run `action` now, or park it behind the unsaved-edits confirm dialog */
   guardEdits(action: () => void): void
   confirmPending(): void
   cancelPending(): void
 
-  setAuthor(name: string): void
   /** log in on the server; 'ok' also remembers the login in this browser */
   login(account: string, password: string): Promise<LoginResult>
+  /** create an account with an invite code and log in with it */
+  register(input: RegisterInput): Promise<RegisterResult>
   logout(): void
+  /** ask the server who is logged in (name and role) */
+  refreshAccount(): Promise<void>
+  setDisplayName(name: string): Promise<boolean>
+  changePassword(oldPassword: string, newPassword: string): Promise<PasswordChangeResult>
+  openAuth(mode: 'login' | 'register' | null): void
+  openAccount(open: boolean): void
+
   /** fetch the online library list */
   refreshCloud(): Promise<void>
-  /** open an online card in the editor (callers guard unsaved edits) */
-  loadCloudCard(id: string): Promise<void>
+  /** open an online card in the editor (callers guard unsaved edits);
+   *  false when it could not be opened (the notice says why) */
+  loadCloudCard(id: string): Promise<boolean>
   /** upload the displayed card: update its online entry, or add a new one
-   *  when it has none or `asNew` is set */
-  saveCloudCard(asNew?: boolean): Promise<void>
+   *  when it has none or `asNew` is set; true on success */
+  saveCloudCard(asNew?: boolean): Promise<boolean>
   removeCloudCard(id: string): Promise<void>
+
+  /** fetch the specializations (creating missing preset rows) */
+  refreshSpecs(): Promise<void>
+  /** take a specialization row the China page just saved */
+  replaceSpec(row: SpecRow): void
+  /** put an online card into exactly these specializations; true on success */
+  setCardSpecs(cardId: string, specIds: number[]): Promise<boolean>
+  togglePendingSpec(specId: number): void
 }
 
 function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardModel {
@@ -144,10 +209,13 @@ function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardM
 }
 
 const LANG_KEY = 'ba-recard.lang'
+/** the free-text nickname the library used before accounts; no longer used */
+const OLD_AUTHOR_KEY = 'ba-recard.author'
 
 /** The remembered language, Chinese when none (or storage is unavailable). */
 function initialLang(): Lang {
   try {
+    localStorage.removeItem(OLD_AUTHOR_KEY)
     const saved = localStorage.getItem(LANG_KEY)
     if (saved === 'eng' || saved === 'chi') return saved
   } catch {
@@ -164,25 +232,22 @@ function rememberLang(lang: Lang) {
   }
 }
 
-const AUTHOR_KEY = 'ba-recard.author'
-
-function initialAuthor(): string {
-  try {
-    return localStorage.getItem(AUTHOR_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
 function errorText(e: unknown): string {
   if (e instanceof DOMException && e.name === 'AbortError') return 'timeout'
   return e instanceof Error ? e.message : String(e)
 }
 
 /** the notice for a failed online action; none when the login was turned
- *  down, since the login form replaces the panel then */
+ *  down, since the login form replaces the online features then */
 function cloudFailure(e: unknown): CloudNotice | null {
-  return e instanceof CloudAuthError ? null : { kind: 'error', key: 'cloudFailed', detail: errorText(e) }
+  if (e instanceof CloudAuthError) return null
+  if (e instanceof CloudHttpError && e.reason === 'not_owner') return { kind: 'error', key: 'cloudNotOwner' }
+  return { kind: 'error', key: 'cloudFailed', detail: errorText(e) }
+}
+
+/** the displayed card in the exported-file format, images compressed */
+async function cardPayload(entry: SavedCard): Promise<unknown> {
+  return compressCardImages(JSON.parse(serializeSavedCard(entry)) as unknown)
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -195,8 +260,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   style: 'new', // the current in-game card style; Legacy is opt-in
 
   editMode: false,
-  // …/#china opens straight on the China specialization page
-  view: typeof location !== 'undefined' && location.hash === '#china' ? 'china' : 'card',
+  // …/#library and …/#china open straight on those pages
+  view: (typeof location !== 'undefined' && viewFromHash(location.hash)) || 'card',
+  workView: 'card',
   log: emptyLog(),
   card: null,
   dirty: false,
@@ -209,9 +275,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   cloudBusy: false,
   cloudNotice: null,
   cloudLinked: null,
-  author: initialAuthor(),
+  account: currentAccount(),
   authed: isLoggedIn(),
   loginExpired: false,
+  weakPassword: false,
+  authDialog: null,
+  accountDialog: false,
+  specs: null,
+  specsLoading: false,
+  specsNotice: null,
+  pendingSpecIds: [],
+  specBusy: false,
 
   async load() {
     try {
@@ -243,19 +317,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectUnit(unitId) {
     const { db } = get()
+    // a fresh card from the arsenal is not an online entry
+    const fresh = { dirty: false, colorTarget: null, cloudLinked: null, pendingSpecIds: [], cloudNotice: null }
     if (!db || unitId == null) {
-      set({ selectedUnitId: unitId, selection: {}, card: null, dirty: false, colorTarget: null, cloudLinked: null })
+      set({ selectedUnitId: unitId, selection: {}, card: null, ...fresh })
       return
     }
-    set({
-      selectedUnitId: unitId,
-      selection: {},
-      card: resolve(db, unitId, {}),
-      dirty: false,
-      colorTarget: null,
-      // a fresh card from the arsenal is not an online entry
-      cloudLinked: null,
-    })
+    set({ selectedUnitId: unitId, selection: {}, card: resolve(db, unitId, {}), ...fresh })
   },
 
   selectOption(modificationId, optionId) {
@@ -291,7 +359,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (db && card)
         set({ log: { entries: [emptyLogEntry(logUnitFromCard(db, card))] }, editMode: true })
     }
-    set({ view, colorTarget: null })
+    set({
+      view,
+      colorTarget: null,
+      // notices belong to the page they were shown on
+      cloudNotice: null,
+      ...(view === 'card' || view === 'log' ? { workView: view } : {}),
+    })
   },
 
   setColorTarget(key) {
@@ -352,7 +426,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       selection,
       card: structuredClone(card),
     })
-    if (!get().saveError) set({ dirty: false })
+    if (!get().saveError) set({ dirty: false, cloudNotice: { kind: 'ok', key: 'savedLocally' } })
+  },
+
+  async saveCurrent() {
+    const { cloudLinked, authed } = get()
+    if (cloudLinked && authed) return get().saveCloudCard(false)
+    get().saveCard()
+    return !get().saveError
   },
 
   importSavedCard(entry) {
@@ -379,6 +460,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       dirty: false,
       colorTarget: null,
       cloudLinked: null,
+      pendingSpecIds: [],
+      cloudNotice: null,
     })
   },
 
@@ -386,6 +469,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = get().savedCards.filter((s) => s.id !== id)
     persistSavedCards(next)
     set({ savedCards: next })
+  },
+
+  async uploadSavedCard(id) {
+    const entry = get().savedCards.find((s) => s.id === id)
+    if (!entry) return
+    set({ cloudBusy: true, cloudNotice: null })
+    try {
+      await createCloudCard({ name: entry.name, unit_id: entry.card.unitId, data: await cardPayload(entry) })
+      set({ cloudNotice: { kind: 'ok', key: 'cloudCreated' } })
+      void get().refreshCloud()
+    } catch (e) {
+      set({ cloudNotice: cloudFailure(e) })
+    } finally {
+      set({ cloudBusy: false })
+    }
   },
 
   guardEdits(action) {
@@ -405,25 +503,92 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async login(account, password) {
     const result = await serverLogin(account, password)
-    if (result === 'ok') set({ authed: true, loginExpired: false })
+    if (result === 'ok') {
+      set({
+        account: currentAccount(),
+        authed: true,
+        loginExpired: false,
+        weakPassword: password.length < 6,
+        authDialog: null,
+      })
+      void get().refreshCloud()
+      void get().refreshSpecs()
+    }
+    return result
+  },
+
+  async register(input) {
+    const result = await serverRegister(input)
+    if (result === 'ok') {
+      set({ account: currentAccount(), authed: true, loginExpired: false, weakPassword: false, authDialog: null })
+      void get().refreshCloud()
+      void get().refreshSpecs()
+    }
     return result
   },
 
   logout() {
     forgetLogin()
-    set({ authed: false, loginExpired: false, cloudCards: [], cloudLinked: null, cloudNotice: null })
+    set({
+      account: null,
+      authed: false,
+      loginExpired: false,
+      weakPassword: false,
+      accountDialog: false,
+      cloudCards: [],
+      cloudLinked: null,
+      cloudNotice: null,
+      specs: null,
+      specsNotice: null,
+    })
   },
 
-  setAuthor(name) {
-    set({ author: name })
+  async refreshAccount() {
+    if (!get().authed) return
     try {
-      localStorage.setItem(AUTHOR_KEY, name)
+      const account = await fetchMe()
+      if (!account) {
+        // the account behind this login no longer exists
+        get().logout()
+        return
+      }
+      rememberAccount(account)
+      set({ account })
     } catch {
-      // not fatal: the nickname just isn't remembered
+      // offline or refused: keep what is known; a turned-down login is
+      // handled by onLoginExpired
     }
   },
 
+  async setDisplayName(name) {
+    try {
+      const account = await saveDisplayName(name)
+      if (!account) return false
+      rememberAccount(account)
+      set({ account })
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  changePassword(oldPassword, newPassword) {
+    return serverChangePassword(oldPassword, newPassword).then((result) => {
+      if (result === 'ok') set({ weakPassword: false })
+      return result
+    })
+  },
+
+  openAuth(mode) {
+    set({ authDialog: mode })
+  },
+
+  openAccount(open) {
+    set({ accountDialog: open })
+  },
+
   async refreshCloud() {
+    if (!get().authed) return
     set({ cloudListing: true })
     try {
       set({ cloudCards: await listCloudCards() })
@@ -442,7 +607,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!row || !entry) {
         set({ cloudNotice: { kind: 'error', key: 'cloudMissing' } })
         void get().refreshCloud()
-        return
+        return false
       }
       set({
         selectedUnitId: entry.card.unitId,
@@ -453,41 +618,52 @@ export const useAppStore = create<AppState>((set, get) => ({
         dirty: false,
         colorTarget: null,
         cloudLinked: { id: row.id, version: row.version },
+        pendingSpecIds: [],
       })
+      // keep the list entry current (someone may have saved it meanwhile)
+      set((s) => ({
+        cloudCards: s.cloudCards.some((c) => c.id === row.id)
+          ? s.cloudCards.map((c) => (c.id === row.id ? { ...c, ...metaOf(row) } : c))
+          : [metaOf(row), ...s.cloudCards],
+      }))
+      return true
     } catch (e) {
       set({ cloudNotice: cloudFailure(e) })
+      return false
     } finally {
       set({ cloudBusy: false })
     }
   },
 
   async saveCloudCard(asNew = false) {
-    const { card, compact, style, selection, author, cloudLinked } = get()
-    if (!card) return
+    const { card, compact, style, selection, cloudLinked, pendingSpecIds } = get()
+    if (!card) return false
     set({ cloudBusy: true, cloudNotice: null })
     try {
       const name = card.name.trim() || 'Untitled'
       // same JSON as an exported card file, so entries load like imports
-      const payload = await compressCardImages(
-        JSON.parse(
-          serializeSavedCard({ id: '', name, savedAt: Date.now(), compact, style, selection, card }),
-        ) as unknown,
-      )
-      const input = { name, author: author.trim(), unit_id: card.unitId, data: payload }
+      const data = await cardPayload({ id: '', name, savedAt: Date.now(), compact, style, selection, card })
+      const input = { name, unit_id: card.unitId, data }
+      const updating = !!cloudLinked && !asNew
       const row =
         cloudLinked && !asNew
           ? await updateCloudCard(cloudLinked.id, cloudLinked.version, input)
           : await createCloudCard(input)
-      set({
+      set((s) => ({
         cloudLinked: { id: row.id, version: row.version },
         dirty: false,
-        cloudNotice: { kind: 'ok', key: cloudLinked && !asNew ? 'cloudUpdated' : 'cloudCreated' },
-      })
-      void get().refreshCloud()
+        cloudNotice: { kind: 'ok', key: updating ? 'cloudUpdated' : 'cloudCreated' },
+        cloudCards: [metaOf(row), ...s.cloudCards.filter((c) => c.id !== row.id)],
+        pendingSpecIds: [],
+      }))
+      // a card uploaded for the first time joins the specializations picked for it
+      if (!cloudLinked && pendingSpecIds.length > 0) await get().setCardSpecs(row.id, pendingSpecIds)
+      return true
     } catch (e) {
       set({
         cloudNotice: e instanceof CloudConflictError ? { kind: 'error', key: 'cloudConflict' } : cloudFailure(e),
       })
+      return false
     } finally {
       set({ cloudBusy: false })
     }
@@ -502,15 +678,86 @@ export const useAppStore = create<AppState>((set, get) => ({
         cloudLinked: s.cloudLinked?.id === id ? null : s.cloudLinked,
         cloudNotice: { kind: 'ok', key: 'cloudDeleted' },
       }))
+      // the server also took it out of its specializations
+      void get().refreshSpecs()
     } catch (e) {
       set({ cloudNotice: cloudFailure(e) })
     } finally {
       set({ cloudBusy: false })
     }
   },
+
+  async refreshSpecs() {
+    if (!get().authed) return
+    set({ specsLoading: true })
+    try {
+      set({ specs: await ensureSpecs(await listSpecs()), specsNotice: null })
+    } catch (e) {
+      if (e instanceof CloudAuthError) return
+      set({
+        specsNotice:
+          e instanceof CloudMissingTableError
+            ? { kind: 'error', key: 'specsMissing' }
+            : { kind: 'error', key: 'cloudFailed', detail: errorText(e) },
+      })
+    } finally {
+      set({ specsLoading: false })
+    }
+  },
+
+  replaceSpec(row) {
+    set((s) => ({ specs: s.specs?.map((r) => (r.id === row.id ? row : r)) ?? [row] }))
+  },
+
+  async setCardSpecs(cardId, specIds) {
+    set({ specBusy: true })
+    try {
+      await serverSetCardSpecs(cardId, specIds)
+      await get().refreshSpecs()
+      return true
+    } catch (e) {
+      set({ cloudNotice: cloudFailure(e) })
+      return false
+    } finally {
+      set({ specBusy: false })
+    }
+  },
+
+  togglePendingSpec(specId) {
+    set((s) => ({
+      pendingSpecIds: s.pendingSpecIds.includes(specId)
+        ? s.pendingSpecIds.filter((id) => id !== specId)
+        : [...s.pendingSpecIds, specId].sort((a, b) => a - b),
+    }))
+  },
 }))
+
+/** the list fields of a full row */
+function metaOf(row: CloudCardMeta): CloudCardMeta {
+  return {
+    id: row.id,
+    name: row.name,
+    author: row.author,
+    editor: row.editor ?? '',
+    created_by: row.created_by ?? null,
+    updated_by: row.updated_by ?? null,
+    unit_id: row.unit_id,
+    version: row.version,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
 
 // The server turned the remembered login down (expired, or the password was
 // changed): show the login form again. The card being edited, and which
 // online card it came from, stay, so it can still be saved after logging in.
-onLoginExpired(() => useAppStore.setState({ authed: false, loginExpired: true, cloudCards: [], cloudNotice: null }))
+onLoginExpired(() =>
+  useAppStore.setState({
+    account: null,
+    authed: false,
+    loginExpired: true,
+    cloudCards: [],
+    cloudNotice: null,
+    specs: null,
+  }),
+)

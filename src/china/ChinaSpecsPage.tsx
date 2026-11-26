@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../state/store'
 import { thumbnailUrl } from '../assets'
 import { UnitCategoryLocKey, UnitCategoryType } from '../data/enums'
 import type { GameDb } from '../data/db'
 import type { CloudCardMeta } from '../cloud/cloudCards'
-import { CloudAuthError, CloudConflictError, CloudMissingTableError } from '../cloud/rest'
+import { CloudAuthError, CloudConflictError } from '../cloud/rest'
 import type { SpecInput, SpecRow, SpecUnitRef } from '../cloud/specs'
-import { ensureSpecs, listSpecs, saveSpec } from '../cloud/specs'
+import { saveSpec } from '../cloud/specs'
 import { cloudEnabled } from '../cloud/config'
-import { LoginForm } from '../ui/LoginForm'
+import { AuthGate } from '../auth/AuthForm'
 import { t, type UiStringKey } from '../ui/i18n'
 import './china.css'
 
@@ -117,59 +117,44 @@ export function ChinaSpecsPage() {
   const authed = useAppStore((s) => s.authed)
   const cloudCards = useAppStore((s) => s.cloudCards)
   const refreshCloud = useAppStore((s) => s.refreshCloud)
+  const specs = useAppStore((s) => s.specs)
+  const loading = useAppStore((s) => s.specsLoading)
+  const pageNotice = useAppStore((s) => s.specsNotice)
+  const refreshSpecs = useAppStore((s) => s.refreshSpecs)
+  const replaceSpec = useAppStore((s) => s.replaceSpec)
   const setView = useAppStore((s) => s.setView)
   const guardEdits = useAppStore((s) => s.guardEdits)
   const loadCloudCard = useAppStore((s) => s.loadCloudCard)
   const selectUnit = useAppStore((s) => s.selectUnit)
 
-  const [specs, setSpecs] = useState<SpecRow[] | null>(null)
-  const [drafts, setDrafts] = useState<Record<number, SpecInput>>({})
+  // unsaved edits per specialization, with the version they started from:
+  // saving checks that version, so a newer save by someone else (or a card
+  // assigned from the card maker) is never overwritten unnoticed
+  const [drafts, setDrafts] = useState<Record<number, { value: SpecInput; version: number }>>({})
   const [notices, setNotices] = useState<Record<number, Notice | undefined>>({})
   const [saving, setSaving] = useState<Record<number, boolean>>({})
   const [open, setOpen] = useState<Record<number, boolean>>({})
-  const [loading, setLoading] = useState(false)
-  const [pageNotice, setPageNotice] = useState<Notice | null>(null)
   const [picker, setPicker] = useState<{ specId: number; category: number | null } | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setPageNotice(null)
-    try {
-      setSpecs(await ensureSpecs(await listSpecs()))
-    } catch (e) {
-      // a turned-down login brings back the login form instead
-      if (e instanceof CloudAuthError) return
-      setPageNotice(
-        e instanceof CloudMissingTableError
-          ? { kind: 'error', key: 'specsMissing' }
-          : { kind: 'error', key: 'cloudFailed', detail: e instanceof Error ? e.message : String(e) },
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [])
 
   useEffect(() => {
     if (!authed || !cloudEnabled()) return
-    void load()
+    void refreshSpecs()
     void refreshCloud()
-  }, [authed, load, refreshCloud])
+  }, [authed, refreshSpecs, refreshCloud])
 
   const cardsById = useMemo(() => new Map(cloudCards.map((c) => [c.id, c])), [cloudCards])
 
   if (!authed)
     return (
       <div className="china-page">
-        <div className="china-login">
-          <LoginForm />
-        </div>
+        <AuthGate reason="authGateChina" />
       </div>
     )
   if (!db) return null
 
-  const edit = (id: number, next: SpecInput) => {
-    setDrafts((d) => ({ ...d, [id]: next }))
-    setNotices((n) => ({ ...n, [id]: undefined }))
+  const edit = (row: SpecRow, next: SpecInput) => {
+    setDrafts((d) => ({ ...d, [row.id]: { value: next, version: d[row.id]?.version ?? row.version } }))
+    setNotices((n) => ({ ...n, [row.id]: undefined }))
   }
   const revert = (id: number) => {
     setDrafts((d) => {
@@ -178,15 +163,15 @@ export function ChinaSpecsPage() {
     })
     setNotices((n) => ({ ...n, [id]: undefined }))
     // pick up whatever was saved meanwhile
-    void load()
+    void refreshSpecs()
   }
   const save = async (row: SpecRow) => {
     const draft = drafts[row.id]
     if (!draft) return
     setSaving((s) => ({ ...s, [row.id]: true }))
     try {
-      const saved = await saveSpec(row.id, row.version, { ...draft, name: draft.name.trim() || row.name })
-      setSpecs((list) => list?.map((r) => (r.id === saved.id ? saved : r)) ?? null)
+      const saved = await saveSpec(row.id, draft.version, { ...draft.value, name: draft.value.name.trim() || row.name })
+      replaceSpec(saved)
       setDrafts((d) => {
         const { [row.id]: _, ...rest } = d
         return rest
@@ -208,14 +193,16 @@ export function ChinaSpecsPage() {
   }
   const openUnit = (ref: SpecUnitRef) =>
     guardEdits(() => {
-      if (ref.source === 'card') void loadCloudCard(ref.id)
-      else selectUnit(ref.id)
-      setView('card')
+      if (ref.source === 'card') void loadCloudCard(ref.id).then((ok) => ok && setView('card'))
+      else {
+        selectUnit(ref.id)
+        setView('card')
+      }
     })
 
   const allOpen = !!specs && specs.every((s) => open[s.id])
   const pickerSpec = picker ? specs?.find((s) => s.id === picker.specId) : undefined
-  const pickerInput = pickerSpec ? (drafts[pickerSpec.id] ?? inputOf(pickerSpec)) : null
+  const pickerInput = pickerSpec ? (drafts[pickerSpec.id]?.value ?? inputOf(pickerSpec)) : null
 
   return (
     <div className="china-page">
@@ -234,10 +221,9 @@ export function ChinaSpecsPage() {
               {allOpen ? t(lang, 'collapseAll') : t(lang, 'expandAll')}
             </button>
           )}
-          <button disabled={loading} onClick={() => void load()}>
+          <button disabled={loading} onClick={() => void refreshSpecs()}>
             {t(lang, 'refresh')}
           </button>
-          <button onClick={() => setView('card')}>{t(lang, 'backToCards')}</button>
         </div>
       </div>
       {pageNotice && (
@@ -252,7 +238,7 @@ export function ChinaSpecsPage() {
           <SpecEditor
             key={row.id}
             row={row}
-            value={drafts[row.id] ?? inputOf(row)}
+            value={drafts[row.id]?.value ?? inputOf(row)}
             open={!!open[row.id]}
             dirty={!!drafts[row.id]}
             saving={!!saving[row.id]}
@@ -260,7 +246,7 @@ export function ChinaSpecsPage() {
             db={db}
             cardsById={cardsById}
             onToggle={() => setOpen((o) => ({ ...o, [row.id]: !o[row.id] }))}
-            onChange={(next) => edit(row.id, next)}
+            onChange={(next) => edit(row, next)}
             onSave={() => void save(row)}
             onRevert={() => revert(row.id)}
             onAddUnits={(category) => setPicker({ specId: row.id, category })}
@@ -276,7 +262,7 @@ export function ChinaSpecsPage() {
           initialCategory={picker.category}
           onToggle={(ref) => {
             const has = pickerInput.units.some((u) => sameRef(u, ref))
-            edit(pickerSpec.id, {
+            edit(pickerSpec, {
               ...pickerInput,
               units: has ? pickerInput.units.filter((u) => !sameRef(u, ref)) : [...pickerInput.units, ref],
             })

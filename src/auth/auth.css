@@ -1,0 +1,132 @@
+/* login / sign-up form, its dialog and page gate; the account dialog */
+.auth-form { display: flex; flex-direction: column; gap: 9px; }
+.auth-tabs { display: flex; border-bottom: 1px solid #2a323c; margin-bottom: 2px; }
+.auth-tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: #8b98a5;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.auth-tabs button:hover { color: #d7dee6; }
+.auth-tabs button.active { color: #e8b23a; border-bottom-color: #e8b23a; }
+.auth-hint { font-size: 11px; color: #8b98a5; line-height: 1.5; }
+.auth-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #8b98a5; }
+.auth-field .cloud-input { font-size: 13px; padding: 7px 9px; }
+.auth-field .cloud-input:focus,
+.account-dialog .cloud-input:focus { outline: none; border-color: #8a6a22; }
+.auth-submit {
+  margin-top: 4px;
+  background: #e8b23a;
+  border: 1px solid #e8b23a;
+  color: #14181c;
+  font-weight: 700;
+  padding: 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+.auth-submit:hover:not(:disabled) { background: #f2c350; }
+.auth-submit:disabled { opacity: 0.5; cursor: default; }
+.auth-switch { align-self: center; }
+
+.auth-dialog {
+  position: relative;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: #171c22;
+  border: 1px solid #2a323c;
+  border-radius: 6px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.auth-close { position: absolute; top: 8px; right: 10px; }
+
+.auth-gate { max-width: 380px; margin: 48px auto; display: flex; flex-direction: column; gap: 6px; }
+.auth-gate h2 { font-size: 18px; color: #e8b23a; }
+.auth-gate-box {
+  background: #171c22;
+  border: 1px solid #2a323c;
+  border-radius: 6px;
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+
+/* account dialog */
+.account-dialog { width: min(540px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 14px; }
+.account-head { display: flex; align-items: center; gap: 12px; padding-right: 22px; }
+.account-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.account-head h3 { font-size: 16px; color: #e8eef4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-logout {
+  flex: none;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #8b98a5;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.account-logout:hover { border-color: #b23; color: #ff9b8b; }
+.account-section { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #2a323c; padding-top: 12px; }
+.account-section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #8b98a5; }
+.account-row { display: flex; gap: 6px; }
+.account-row .cloud-input { flex: 1; }
+.account-password { display: flex; flex-direction: column; gap: 6px; }
+.auth-small {
+  align-self: flex-start;
+  background: #10151a;
+  border: 1px solid #8a6a22;
+  color: #e8b23a;
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.auth-small:hover:not(:disabled) { border-color: #e8b23a; }
+.auth-small:disabled { opacity: 0.45; cursor: default; }
+.account-warning {
+  font-size: 12px;
+  color: #ffcf6b;
+  background: #2a2412;
+  border: 1px solid #5a4a1c;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.admin-label { font-size: 11px; color: #8b98a5; margin-top: 4px; }
+.admin-invite { display: flex; flex-direction: column; gap: 6px; }
+.admin-codes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.admin-code { display: inline-flex; align-items: center; gap: 6px; }
+.admin-code code {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 14px;
+  color: #e8b23a;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+.admin-members { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; }
+.admin-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  border-radius: 3px;
+  padding: 5px 8px;
+}
+.admin-member-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.admin-member-name b { font-size: 12px; color: #e8eef4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-member-name .auth-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

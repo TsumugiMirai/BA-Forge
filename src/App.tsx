@@ -1,68 +1,113 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAppStore } from './state/store'
+import type { View } from './state/store'
+import { useAppStore, viewFromHash } from './state/store'
 import { UnitPicker } from './ui/UnitPicker'
 import { VariantPanel } from './ui/VariantPanel'
 import { ColorPanel } from './ui/ColorPanel'
-import { SavedCardsPanel } from './ui/SavedCardsPanel'
-import { CloudCardsPanel } from './ui/CloudCardsPanel'
+import { CardPanel } from './ui/CardPanel'
+import { AppHeader } from './ui/AppHeader'
 import { CropDialog } from './ui/CropDialog'
 import { UnitCard } from './card/UnitCard'
 import { LogBoard } from './log/LogBoard'
 import { logFileName } from './log/logModel'
 import { exportCardPng, exportLogPng } from './export/exportPng'
 import { ChinaSpecsPage } from './china/ChinaSpecsPage'
+import { LibraryPage } from './library/LibraryPage'
+import { AuthDialog } from './auth/AuthForm'
+import { AccountDialog } from './auth/AccountDialog'
 import { t } from './ui/i18n'
 import './app.css'
 
-const CHINA_HASH = '#china'
+/** the address of each page (the card maker has none) */
+const VIEW_HASH: Partial<Record<View, string>> = { library: '#library', china: '#china' }
 
 export default function App() {
-  const { db, loadError, card, compact, style, editMode, lang, view, log, pendingAction } = useAppStore()
+  const { db, loadError, lang, view, pendingAction } = useAppStore()
   const load = useAppStore((s) => s.load)
-  const confirmPending = useAppStore((s) => s.confirmPending)
-  const cancelPending = useAppStore((s) => s.cancelPending)
-  const setCompact = useAppStore((s) => s.setCompact)
-  const setStyle = useAppStore((s) => s.setStyle)
-  const setEditMode = useAppStore((s) => s.setEditMode)
   const setView = useAppStore((s) => s.setView)
-  const setLang = useAppStore((s) => s.setLang)
-  const resetEdits = useAppStore((s) => s.resetEdits)
-  const resetLog = useAppStore((s) => s.resetLog)
-  const swapLogSides = useAppStore((s) => s.swapLogSides)
-  const updateCard = useAppStore((s) => s.updateCard)
-  const saveCard = useAppStore((s) => s.saveCard)
-
-  const [cropSrc, setCropSrc] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const authed = useAppStore((s) => s.authed)
+  const refreshAccount = useAppStore((s) => s.refreshAccount)
+  const refreshCloud = useAppStore((s) => s.refreshCloud)
 
   useEffect(() => {
     void load()
   }, [load])
 
-  // The China specialization page has its own address (…/BA-ReCard/#china):
-  // the store opens it when the page loads with that hash; here the hash
-  // follows the view, and back/forward (hash changes) switch the view.
+  // a login remembered in this browser: who it is, and the online list
   useEffect(() => {
-    const fromHash = () => {
-      if (location.hash === CHINA_HASH) setView('china')
-      else if (useAppStore.getState().view === 'china') setView('card')
+    if (!authed) return
+    void refreshAccount()
+    void refreshCloud()
+    // only when the page opens; logging in fetches these itself
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Pages have their own addresses (…/BA-ReCard/#library, #china): the store
+  // opens the one the page loads with; here the address follows the page, and
+  // back/forward switch pages.
+  useEffect(() => {
+    const fromAddress = () => {
+      const page = viewFromHash(location.hash)
+      if (page) setView(page)
+      else {
+        const current = useAppStore.getState()
+        if (current.view === 'library' || current.view === 'china') setView(current.workView)
+      }
     }
-    window.addEventListener('hashchange', fromHash)
-    return () => window.removeEventListener('hashchange', fromHash)
+    window.addEventListener('hashchange', fromAddress)
+    window.addEventListener('popstate', fromAddress)
+    return () => {
+      window.removeEventListener('hashchange', fromAddress)
+      window.removeEventListener('popstate', fromAddress)
+    }
   }, [setView])
   useEffect(() => {
-    if (view === 'china' && location.hash !== CHINA_HASH) location.hash = CHINA_HASH
-    else if (view !== 'china' && location.hash === CHINA_HASH)
-      history.replaceState(null, '', location.pathname + location.search)
+    const want = VIEW_HASH[view] ?? ''
+    if (location.hash === want) return
+    if (want) location.hash = want
+    else history.pushState(null, '', location.pathname + location.search)
   }, [view])
 
-  if (loadError)
-    return <div className="app-error">{t(lang, 'loadFailed')}: {loadError}</div>
+  if (loadError) return <div className="app-error">{t(lang, 'loadFailed')}: {loadError}</div>
   if (!db) return <div className="app-loading">{t(lang, 'loading')}</div>
 
+  return (
+    <div className="app">
+      <AppHeader />
+      {view === 'library' ? (
+        <main className="page page-full">
+          <LibraryPage />
+        </main>
+      ) : view === 'china' ? (
+        <main className="page page-full">
+          <ChinaSpecsPage />
+        </main>
+      ) : (
+        <CardMaker />
+      )}
+      {pendingAction && <UnsavedDialog />}
+      <AuthDialog />
+      <AccountDialog />
+    </div>
+  )
+}
+
+/** The card maker: unit picker | card (or kill log) | card panel. */
+function CardMaker() {
+  const { card, compact, style, editMode, lang, view, log } = useAppStore()
+  const setCompact = useAppStore((s) => s.setCompact)
+  const setStyle = useAppStore((s) => s.setStyle)
+  const setEditMode = useAppStore((s) => s.setEditMode)
+  const setView = useAppStore((s) => s.setView)
+  const resetEdits = useAppStore((s) => s.resetEdits)
+  const resetLog = useAppStore((s) => s.resetLog)
+  const swapLogSides = useAppStore((s) => s.swapLogSides)
+  const updateCard = useAppStore((s) => s.updateCard)
+
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
   const isLog = view === 'log'
-  const isChina = view === 'china'
 
   async function onExport() {
     setExporting(true)
@@ -75,48 +120,13 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="page page-card">
       <aside className="sidebar">
-        <div className="app-title-row">
-          <h1 className="app-title">BA ReCard</h1>
-          <div className="app-title-actions">
-            <a
-              className="github-link"
-              href="https://github.com/JohnJinHM/BA-ReCard/"
-              target="_blank"
-              rel="noreferrer"
-              title={t(lang, 'viewSource')}
-              aria-label={t(lang, 'viewSource')}
-            >
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"
-                />
-              </svg>
-            </a>
-            <button
-              className="lang-toggle"
-              title={t(lang, 'langToggle')}
-              onClick={() => void setLang(lang === 'eng' ? 'chi' : 'eng')}
-            >
-              {lang === 'eng' ? '中文' : 'EN'}
-            </button>
-          </div>
-        </div>
-        <button
-          className={`china-nav ${isChina ? 'active' : ''}`}
-          onClick={() => setView(isChina ? 'card' : 'china')}
-        >
-          {isChina ? t(lang, 'backToCards') : t(lang, 'chinaPage')}
-        </button>
         <UnitPicker />
       </aside>
 
       <main className="workspace">
-        {isChina ? (
-          <ChinaSpecsPage />
-        ) : card || isLog ? (
+        {card || isLog ? (
           <>
             <div className="toolbar">
               {/* card layout views + the log workspace */}
@@ -161,15 +171,9 @@ export default function App() {
               <button className={editMode ? 'active' : ''} onClick={() => setEditMode(!editMode)}>
                 {editMode ? t(lang, 'editing') : t(lang, 'edit')}
               </button>
-              {!isLog && (
-                <button onClick={() => fileInput.current?.click()}>{t(lang, 'portrait')}</button>
-              )}
+              {!isLog && <button onClick={() => fileInput.current?.click()}>{t(lang, 'portrait')}</button>}
               {isLog && (
-                <button
-                  className={log.swapped ? 'active' : ''}
-                  title={t(lang, 'swapSidesHint')}
-                  onClick={swapLogSides}
-                >
+                <button className={log.swapped ? 'active' : ''} title={t(lang, 'swapSidesHint')} onClick={swapLogSides}>
                   {t(lang, 'swapSides')}
                 </button>
               )}
@@ -177,14 +181,11 @@ export default function App() {
 
               {/* output */}
               <span className="toolbar-sep" />
-              {!isLog && <button onClick={saveCard}>{t(lang, 'save')}</button>}
               <button className="primary" onClick={onExport} disabled={exporting}>
                 {exporting ? t(lang, 'exporting') : t(lang, 'exportPng')}
               </button>
             </div>
-            <div className="card-stage">
-              {isLog ? <LogBoard /> : card && <UnitCard card={card} />}
-            </div>
+            <div className="card-stage">{isLog ? <LogBoard /> : card && <UnitCard card={card} />}</div>
           </>
         ) : (
           <div className="workspace-empty">{t(lang, 'emptyWorkspace')}</div>
@@ -192,10 +193,9 @@ export default function App() {
       </main>
 
       <aside className="sidebar right">
-        {!isLog && !isChina && <VariantPanel />}
-        {!isChina && <ColorPanel />}
-        {!isLog && !isChina && <SavedCardsPanel />}
-        {!isLog && <CloudCardsPanel />}
+        {!isLog && <CardPanel />}
+        {!isLog && <VariantPanel />}
+        <ColorPanel />
       </aside>
 
       <input
@@ -209,28 +209,6 @@ export default function App() {
           e.target.value = ''
         }}
       />
-      {pendingAction && (
-        <div className="crop-overlay" onClick={cancelPending}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>{t(lang, 'unsavedTitle')}</h3>
-            <p>{t(lang, 'unsavedBody')}</p>
-            <div className="confirm-actions">
-              <button onClick={cancelPending}>{t(lang, 'cancel')}</button>
-              <button
-                onClick={() => {
-                  saveCard()
-                  confirmPending()
-                }}
-              >
-                {t(lang, 'saveAndSwitch')}
-              </button>
-              <button className="danger" onClick={confirmPending}>
-                {t(lang, 'discard')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {cropSrc && (
         <CropDialog
           imageSrc={cropSrc}
@@ -245,6 +223,48 @@ export default function App() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** "Unsaved edits": shown before something replaces an edited card. Saving
+ *  goes where the card came from (its online entry, else this browser). */
+function UnsavedDialog() {
+  const lang = useAppStore((s) => s.lang)
+  const confirmPending = useAppStore((s) => s.confirmPending)
+  const cancelPending = useAppStore((s) => s.cancelPending)
+  const saveCurrent = useAppStore((s) => s.saveCurrent)
+  const cloudBusy = useAppStore((s) => s.cloudBusy)
+  const notice = useAppStore((s) => s.cloudNotice)
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div className="crop-overlay" onClick={cancelPending}>
+      <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <h3>{t(lang, 'unsavedTitle')}</h3>
+        <p>{t(lang, 'unsavedBody')}</p>
+        {failed && notice?.kind === 'error' && (
+          <div className="saved-error">
+            {t(lang, notice.key)}
+            {notice.detail ? `: ${notice.detail}` : ''}
+          </div>
+        )}
+        <div className="confirm-actions">
+          <button onClick={cancelPending}>{t(lang, 'cancel')}</button>
+          <button
+            disabled={cloudBusy}
+            onClick={async () => {
+              if (await saveCurrent()) confirmPending()
+              else setFailed(true)
+            }}
+          >
+            {cloudBusy ? t(lang, 'cloudWorking') : t(lang, 'saveAndSwitch')}
+          </button>
+          <button className="danger" onClick={confirmPending}>
+            {t(lang, 'discard')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

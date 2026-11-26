@@ -16,10 +16,145 @@ body {
 }
 
 .app {
-  display: grid;
-  grid-template-columns: 300px 1fr 260px;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
 }
+
+/* pages under the header: the card maker's three columns, or one full-width
+   scrolling page (library, China specializations) */
+.page { flex: 1; min-height: 0; }
+.page-card {
+  display: grid;
+  grid-template-columns: 300px 1fr 280px;
+}
+.page-full { overflow-y: auto; }
+
+/* header: brand, page tabs, language and account */
+.app-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 46px;
+  padding: 0 14px;
+  background: #171c22;
+  border-bottom: 1px solid #2a323c;
+}
+.app-brand {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e8b23a;
+  white-space: nowrap;
+}
+.app-nav { display: flex; align-items: stretch; align-self: stretch; gap: 2px; }
+.app-nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-top: 2px solid transparent;
+  color: #8b98a5;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.app-nav button:hover { color: #d7dee6; }
+.app-nav button.active { color: #e8b23a; border-bottom-color: #e8b23a; }
+.nav-lock { opacity: 0.7; }
+.app-header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.account-login {
+  background: #e8b23a;
+  border: 1px solid #e8b23a;
+  color: #14181c;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.account-login:hover { background: #f2c350; }
+.account-menu { position: relative; }
+.account-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: inherit;
+  padding: 3px 9px 3px 3px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  max-width: 220px;
+}
+.account-button:hover, .account-button.open { border-color: #56637a; }
+.account-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2f3a46;
+  color: #e8b23a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+.account-avatar.large { width: 44px; height: 44px; font-size: 20px; }
+.account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-caret { color: #56637a; font-size: 10px; }
+.account-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #ff7b6b; }
+.account-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 170px;
+  background: #1b2128;
+  border: 1px solid #2a323c;
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.account-dropdown button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.account-dropdown button:hover { background: #242c35; }
+.role-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #243040;
+  color: #8b98a5;
+  white-space: nowrap;
+}
+.role-badge.admin { background: #3a2f12; color: #e8b23a; }
 
 .app-loading,
 .app-error {
@@ -42,14 +177,6 @@ body {
 }
 .sidebar.right { border-right: none; border-left: 1px solid #2a323c; }
 
-.app-title-row { display: flex; align-items: center; justify-content: space-between; }
-.app-title {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #e8b23a;
-}
 .lang-toggle {
   background: #10151a;
   border: 1px solid #2a323c;
@@ -61,7 +188,6 @@ body {
   cursor: pointer;
 }
 .lang-toggle:hover { border-color: #e8b23a; color: #e8b23a; }
-.app-title-actions { display: flex; align-items: center; gap: 6px; }
 .github-link {
   display: inline-flex;
   align-items: center;
@@ -85,20 +211,6 @@ body {
   border-radius: 3px;
   font-family: inherit;
 }
-/* button to the China specialization setup page (#china) */
-.china-nav {
-  background: #10151a;
-  border: 1px solid #8a6a22;
-  color: #e8b23a;
-  padding: 6px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-}
-.china-nav:hover, .china-nav.active { border-color: #e8b23a; background: #1c1a12; }
-
 /* nation chips + specialization dropdown above the category tabs */
 .picker-filters { display: flex; flex-direction: column; gap: 6px; }
 .picker-nations { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -480,10 +592,93 @@ body {
 .saved-import:hover { border-color: #56637a; }
 .saved-import:disabled, .saved-action:disabled, .saved-load:disabled { opacity: 0.5; cursor: default; }
 
-/* shared online library (under the local saved cards) */
-.cloud-panel { margin-top: 8px; padding-top: 10px; border-top: 1px solid #2a323c; }
-.cloud-title-row { display: flex; align-items: center; justify-content: space-between; }
-.cloud-title-row .saved-action { height: 24px; }
+/* card maker, right sidebar: the "this card" panel (save, upload,
+   specializations) */
+.card-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a323c;
+}
+.card-panel h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b98a5;
+}
+.card-source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.card-source.online { border-color: #5a4a1c; }
+.card-source-kind { font-weight: 600; color: #c9d3dd; }
+.card-source.online .card-source-kind { color: #e8b23a; }
+.card-source-meta { font-size: 11px; color: #8b98a5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-source .spec-dirty { font-size: 11px; }
+.card-save { display: flex; flex-direction: column; gap: 6px; }
+.card-save button {
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: inherit;
+  padding: 6px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.card-save button:hover:not(:disabled) { border-color: #56637a; }
+.card-save button.card-save-main { background: #e8b23a; border-color: #e8b23a; color: #14181c; font-weight: 700; }
+.card-save button.card-save-main:hover:not(:disabled) { background: #f2c350; }
+.card-save button:disabled { opacity: 0.5; cursor: default; }
+.card-login-hint { font-size: 11px; color: #8b98a5; line-height: 1.5; }
+.card-specs { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.card-specs-title { display: flex; align-items: center; justify-content: space-between; }
+.card-specs-title h4 { font-size: 12px; color: #8b98a5; letter-spacing: 0.04em; }
+.card-specs-state { font-size: 11px; color: #56637a; }
+
+/* China specialization toggles and badges */
+.spec-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.spec-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #8b98a5;
+  border-radius: 3px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.spec-chip:hover:not(:disabled) { border-color: #56637a; color: #d7dee6; }
+.spec-chip.on { border-color: #e8b23a; color: #e8eef4; background: #221d10; }
+.spec-chip:disabled { opacity: 0.6; cursor: default; }
+.spec-chip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-chip-check { color: #e8b23a; font-weight: 700; }
+.spec-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: #1c232b;
+  color: #e8b23a;
+  font-weight: 700;
+  overflow: hidden;
+  line-height: 1;
+}
+.spec-badge img { width: 100%; height: 100%; object-fit: contain; }
+
 .cloud-input {
   background: #10151a;
   border: 1px solid #2a323c;
@@ -494,12 +689,7 @@ body {
   font-size: 12px;
   min-width: 0;
 }
-.cloud-primary { border-color: #e8b23a; color: #e8b23a; }
-.cloud-linked { font-size: 11px; color: #e8b23a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cloud-ok { font-size: 11px; color: #7cff81; }
-.cloud-list { display: flex; flex-direction: column; gap: 6px; }
-.cloud-load { flex-direction: column; align-items: stretch; gap: 2px; }
-.cloud-load.linked { border-color: #e8b23a; }
 .cloud-meta { font-size: 10px; color: #56637a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .color-native-input {
