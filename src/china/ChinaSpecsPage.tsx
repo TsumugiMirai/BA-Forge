@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../state/store'
-import { iconUrl, thumbnailUrl } from '../assets'
+import { thumbnailUrl } from '../assets'
 import { UnitCategoryLocKey, UnitCategoryType } from '../data/enums'
 import type { GameDb } from '../data/db'
 import type { CloudCardMeta } from '../cloud/cloudCards'
 import { CloudAuthError, CloudConflictError } from '../cloud/rest'
-import type { SpecInput, SpecRow, SpecUnitRef } from '../cloud/specs'
+import type { SpecInput, SpecPoints, SpecRow, SpecUnitRef } from '../cloud/specs'
 import { saveSpec } from '../cloud/specs'
 import { cloudEnabled } from '../cloud/config'
 import { AuthGate } from '../auth/AuthForm'
+import { CardViewer } from '../ui/CardViewer'
 import { t, type UiStringKey } from '../ui/i18n'
 import './china.css'
 
@@ -20,16 +21,9 @@ const ICON_MAX = 256
 const CATEGORIES = [0, 1, 2, 3, 5, 6]
 /** pseudo-category for units whose template is unknown (deleted cards) */
 const OTHER = -1
-/** a stat sprite standing in for each category (the arsenal's own category
- *  tabs are text) */
-const CATEGORY_ICON: Record<number, string> = {
-  0: 'Optics',
-  1: 'Forward speed.inf',
-  2: 'Forward speed.car',
-  3: 'Explosive charge',
-  5: 'Forward speed.hel',
-  6: 'Forward speed.air',
-}
+
+/** where the page was scrolled to, restored when coming back to it */
+let savedScroll = 0
 
 /** Read an image file as a square-bounded WebP data URL (≤256 px a side). */
 async function readIcon(file: File): Promise<string> {
@@ -51,7 +45,13 @@ async function readIcon(file: File): Promise<string> {
 }
 
 function inputOf(row: SpecRow): SpecInput {
-  return { name: row.name, icon: row.icon, description: row.description, units: row.units ?? [] }
+  return {
+    name: row.name,
+    icon: row.icon,
+    description: row.description,
+    units: row.units ?? [],
+    points: row.points ?? {},
+  }
 }
 
 const sameRef = (a: SpecUnitRef, b: SpecUnitRef) => a.source === b.source && a.id === b.id
@@ -71,11 +71,13 @@ function moveRef(
   return rest
 }
 
+function totalPoints(points: SpecPoints): number {
+  return Object.values(points).reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0)
+}
+
 interface ResolvedUnit {
   ref: SpecUnitRef
   name: string
-  /** custom cards: the game unit they are built on */
-  base: string
   thumb: string | null
   category: number
   custom: boolean
@@ -94,7 +96,6 @@ function resolveRef(
     return {
       ref,
       name: meta?.name ?? t(lang, 'deletedCard'),
-      base: unit?.HUDName ?? unit?.Name ?? '',
       thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
       category: unit?.CategoryType ?? OTHER,
       custom: true,
@@ -105,7 +106,6 @@ function resolveRef(
   return {
     ref,
     name: unit?.HUDName ?? unit?.Name ?? `#${ref.id}`,
-    base: '',
     thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
     category: unit?.CategoryType ?? OTHER,
     custom: false,
@@ -142,12 +142,13 @@ function SpecEmblem({ name, icon, size }: { name: string; icon: string | null; s
 }
 
 /**
- * The China specialization setup page (#china): a strip of the six
- * specializations to jump between, and each one as a full-width row,
- * collapsed to a summary until opened. An open one shows its emblem, name and
- * description (editable on demand) and its units by arsenal category as
- * cards that drag left/right to reorder. Saved online in the `specs` table,
- * one specialization at a time.
+ * The China specialization setup page (#china): each specialization as a
+ * full-width row, collapsed to a summary until opened. An open one lists its
+ * units by arsenal category as cards (drag left/right to reorder; a click
+ * shows the unit's card on top of the page) with the category's points at
+ * the end of the row. Saved online in the `specs` table, one specialization
+ * at a time. Open rows and unsaved edits live in the store, so they are
+ * still there after a trip to the card maker.
  */
 export function ChinaSpecsPage() {
   const lang = useAppStore((s) => s.lang)
@@ -160,25 +161,33 @@ export function ChinaSpecsPage() {
   const pageNotice = useAppStore((s) => s.specsNotice)
   const refreshSpecs = useAppStore((s) => s.refreshSpecs)
   const replaceSpec = useAppStore((s) => s.replaceSpec)
-  const setView = useAppStore((s) => s.setView)
   const guardEdits = useAppStore((s) => s.guardEdits)
-  const loadCloudCard = useAppStore((s) => s.loadCloudCard)
-  const selectUnit = useAppStore((s) => s.selectUnit)
+  const open = useAppStore((s) => s.chinaOpen)
+  const setOpen = useAppStore((s) => s.setChinaOpen)
+  const drafts = useAppStore((s) => s.chinaDrafts)
+  const setDrafts = useAppStore((s) => s.setChinaDrafts)
 
-  // unsaved edits per specialization, with the version they started from:
-  // saving checks that version, so a newer save by someone else (or a card
-  // assigned from the card maker) is never overwritten unnoticed
-  const [drafts, setDrafts] = useState<Record<number, { value: SpecInput; version: number }>>({})
   const [notices, setNotices] = useState<Record<number, Notice | undefined>>({})
   const [saving, setSaving] = useState<Record<number, boolean>>({})
-  const [open, setOpen] = useState<Record<number, boolean>>({})
   const [picker, setPicker] = useState<{ specId: number; category: number | null } | null>(null)
+  const [viewing, setViewing] = useState<SpecUnitRef | null>(null)
 
   useEffect(() => {
     if (!authed || !cloudEnabled()) return
     void refreshSpecs()
     void refreshCloud()
   }, [authed, refreshSpecs, refreshCloud])
+
+  // come back to where the page was left
+  const pageRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const scroller = pageRef.current?.closest('.page-full')
+    if (!scroller) return
+    scroller.scrollTop = savedScroll
+    const remember = () => void (savedScroll = scroller.scrollTop)
+    scroller.addEventListener('scroll', remember, { passive: true })
+    return () => scroller.removeEventListener('scroll', remember)
+  }, [authed, !!specs])
 
   const cardsById = useMemo(() => new Map(cloudCards.map((c) => [c.id, c])), [cloudCards])
 
@@ -229,68 +238,26 @@ export function ChinaSpecsPage() {
       setSaving((s) => ({ ...s, [row.id]: false }))
     }
   }
-  const openUnit = (ref: SpecUnitRef) =>
-    guardEdits(() => {
-      if (ref.source === 'card') void loadCloudCard(ref.id).then((ok) => ok && setView('card'))
-      else {
-        selectUnit(ref.id)
-        setView('card')
-      }
-    })
-  // the strip at the top: open that specialization and bring it into view
-  const jumpTo = (id: number) => {
-    setOpen((o) => ({ ...o, [id]: true }))
-    requestAnimationFrame(() =>
-      document.getElementById(`spec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    )
-  }
 
   const allOpen = !!specs && specs.every((s) => open[s.id])
   const pickerSpec = picker ? specs?.find((s) => s.id === picker.specId) : undefined
   const pickerInput = pickerSpec ? (drafts[pickerSpec.id]?.value ?? inputOf(pickerSpec)) : null
 
   return (
-    <div className="china-page">
-      <div className="china-hero">
-        <div className="china-hero-text">
-          <h2>{t(lang, 'chinaTitle')}</h2>
-          <p>{t(lang, 'chinaHint')}</p>
-        </div>
-        <div className="china-hero-actions">
+    <div className="china-page" ref={pageRef}>
+      <div className="china-header">
+        <h2>{t(lang, 'navChina')}</h2>
+        <div className="china-header-actions">
           {specs && (
-            <button onClick={() => setOpen(allOpen ? {} : Object.fromEntries(specs.map((s) => [s.id, true])))}>
+            <button onClick={() => setOpen(() => (allOpen ? {} : Object.fromEntries(specs.map((s) => [s.id, true]))))}>
               {allOpen ? t(lang, 'collapseAll') : t(lang, 'expandAll')}
             </button>
           )}
           <button disabled={loading} onClick={() => void refreshSpecs()}>
-            {loading ? t(lang, 'cloudLoading') : t(lang, 'refresh')}
+            {t(lang, 'refresh')}
           </button>
         </div>
       </div>
-
-      {specs && (
-        <nav className="spec-switcher" aria-label={t(lang, 'chinaTitle')}>
-          {specs.map((row) => {
-            const value = drafts[row.id]?.value ?? inputOf(row)
-            return (
-              <button
-                key={row.id}
-                className={`spec-switch ${open[row.id] ? 'open' : ''} ${drafts[row.id] ? 'dirty' : ''}`}
-                title={value.description || value.name}
-                onClick={() => jumpTo(row.id)}
-              >
-                <SpecEmblem name={value.name} icon={value.icon} size={34} />
-                <span className="spec-switch-text">
-                  <span className="spec-switch-name">{value.name || `#${row.id}`}</span>
-                  <span className="spec-switch-count">
-                    {value.units.length} {t(lang, 'unitsUnit')}
-                  </span>
-                </span>
-              </button>
-            )
-          })}
-        </nav>
-      )}
 
       {pageNotice && (
         <div className="saved-error china-page-notice">
@@ -316,7 +283,7 @@ export function ChinaSpecsPage() {
             onSave={() => void save(row)}
             onRevert={() => revert(row.id)}
             onAddUnits={(category) => setPicker({ specId: row.id, category })}
-            onOpenUnit={openUnit}
+            onOpenUnit={(ref) => guardEdits(() => setViewing(ref))}
           />
         ))}
       </div>
@@ -337,6 +304,7 @@ export function ChinaSpecsPage() {
           onClose={() => setPicker(null)}
         />
       )}
+      {viewing && <CardViewer unitRef={viewing} returnTo="china" onClose={() => setViewing(null)} />}
     </div>
   )
 }
@@ -363,6 +331,7 @@ function SpecEditor(props: {
   const [editingInfo, setEditingInfo] = useState(false)
 
   const groups = useMemo(() => groupUnits(db, cardsById, value.units, lang), [value.units, db, cardsById, lang])
+  const points = totalPoints(value.points)
 
   // drag to reorder: units move only within their own category row; the
   // order is the order of `units`, so it is saved with the specialization
@@ -374,53 +343,61 @@ function SpecEditor(props: {
   }
   const reorder = (moved: SpecUnitRef, target: SpecUnitRef, side: 'before' | 'after') =>
     onChange({ ...value, units: moveRef(value.units, moved, target, side) })
+  const setPoints = (cat: number, text: string) => {
+    const next = { ...value.points }
+    const n = Math.round(Number(text))
+    if (text.trim() === '' || !Number.isFinite(n) || n < 0) delete next[cat]
+    else next[cat] = n
+    onChange({ ...value, points: next })
+  }
 
   const name = value.name || `#${row.id}`
 
   return (
-    <section id={`spec-${row.id}`} className={`spec-row ${open ? 'open' : ''} ${dirty ? 'dirty' : ''}`}>
-      {/* summary bar: always shown, toggles the body */}
-      <button className="spec-summary" aria-expanded={open} onClick={props.onToggle}>
-        <svg className="spec-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <path fill="currentColor" d="M5.5 3.5 10 8l-4.5 4.5-1-1L8 8 4.5 4.5z" />
-        </svg>
-        <SpecEmblem name={value.name} icon={value.icon} size={52} />
-        <span className="spec-summary-text">
-          <span className="spec-summary-name">
-            {name}
-            {dirty && <span className="spec-dirty">{t(lang, 'specUnsaved')}</span>}
-          </span>
-          <span className={`spec-summary-desc ${value.description ? '' : 'empty'}`}>
-            {value.description || t(lang, 'specNoDescription')}
-          </span>
-        </span>
-        <span className="spec-summary-counts">
-          {groups.map(([cat, units]) => (
-            <span
-              key={cat}
-              className={`spec-count ${units.length ? '' : 'zero'}`}
-              title={`${categoryName(db, lang, cat)} ${units.length}`}
-            >
-              {CATEGORY_ICON[cat] ? <img src={iconUrl(CATEGORY_ICON[cat]) ?? undefined} alt="" /> : null}
-              <span className="spec-count-name">{categoryName(db, lang, cat)}</span>
-              <b>{units.length}</b>
+    <section className={`spec-row ${open ? 'open' : ''} ${dirty ? 'dirty' : ''}`}>
+      <div className="spec-summary">
+        <button className="spec-summary-main" aria-expanded={open} onClick={props.onToggle}>
+          <svg className="spec-chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path fill="currentColor" d="M5.5 3.5 10 8l-4.5 4.5-1-1L8 8 4.5 4.5z" />
+          </svg>
+          <SpecEmblem name={value.name} icon={value.icon} size={44} />
+          <span className="spec-summary-text">
+            <span className="spec-summary-name">
+              {name}
+              {dirty && <span className="spec-dirty">{t(lang, 'specUnsaved')}</span>}
             </span>
-          ))}
-        </span>
-        <span className="spec-total">
-          <b>{value.units.length}</b>
-          <small>{t(lang, 'unitsUnit')}</small>
-        </span>
-      </button>
+            {value.description && <span className="spec-summary-desc">{value.description}</span>}
+          </span>
+          <span className="spec-summary-counts">
+            {groups.map(([cat, units]) => (
+              <span key={cat} className={`spec-count ${units.length ? '' : 'zero'}`}>
+                {categoryName(db, lang, cat)} <b>{units.length}</b>
+              </span>
+            ))}
+          </span>
+          <span className="spec-total">
+            <b>{value.units.length}</b>
+            {points > 0 && (
+              <small>
+                {points} {t(lang, 'pointsUnit')}
+              </small>
+            )}
+          </span>
+        </button>
+        {open && (
+          <button className="spec-edit-info" onClick={() => setEditingInfo(!editingInfo)}>
+            {editingInfo ? t(lang, 'done') : t(lang, 'editSpecInfo')}
+          </button>
+        )}
+      </div>
 
       {open && (
         <div className="spec-body">
-          {/* who it is: shown as a header, edited on demand */}
-          {editingInfo ? (
-            <div className="spec-info editing">
+          {editingInfo && (
+            <div className="spec-info-edit">
               <button className="spec-emblem-button" title={t(lang, 'changeIcon')} onClick={() => fileInput.current?.click()}>
-                <SpecEmblem name={value.name} icon={value.icon} size={84} />
-                <span className="spec-emblem-hint">{t(lang, 'changeIcon')}</span>
+                <SpecEmblem name={value.name} icon={value.icon} size={72} />
+                <span>{t(lang, 'changeIcon')}</span>
               </button>
               <div className="spec-info-fields">
                 <div className="spec-name-row">
@@ -437,7 +414,6 @@ function SpecEditor(props: {
                       {t(lang, 'removeIcon')}
                     </button>
                   )}
-                  <span className="spec-number">#{row.id}</span>
                 </div>
                 <textarea
                   className="cloud-input spec-description"
@@ -447,56 +423,32 @@ function SpecEditor(props: {
                   rows={3}
                   onChange={(e) => onChange({ ...value, description: e.target.value })}
                 />
-                <div className="spec-info-actions">
-                  <button className="spec-button" onClick={() => setEditingInfo(false)}>
-                    {t(lang, 'done')}
-                  </button>
-                </div>
               </div>
-            </div>
-          ) : (
-            <div className="spec-info">
-              <SpecEmblem name={value.name} icon={value.icon} size={84} />
-              <div className="spec-info-text">
-                <div className="spec-info-title">
-                  <h3>{name}</h3>
-                  <span className="spec-number">#{row.id}</span>
-                </div>
-                <p className={value.description ? '' : 'empty'}>
-                  {value.description || t(lang, 'specNoDescription')}
-                </p>
-              </div>
-              <button className="spec-button" onClick={() => setEditingInfo(true)}>
-                {t(lang, 'editSpecInfo')}
-              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) onChange({ ...value, icon: await readIcon(file) })
+                }}
+              />
             </div>
           )}
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (file) onChange({ ...value, icon: await readIcon(file) })
-            }}
-          />
 
-          {/* one row per arsenal category; its units are cards laid out
-              left to right, dragged (or nudged with ‹ ›) to reorder */}
+          {/* one row per arsenal category: its units left to right (drag, or
+              ‹ › to reorder), its points at the end */}
           <div className="spec-cat-rows">
             {groups.map(([cat, units]) => (
-              <div key={cat} className={`spec-cat-row ${units.length ? '' : 'empty'}`}>
+              <div key={cat} className="spec-cat-row">
                 <div className="spec-cat-label">
-                  <span className="spec-cat-title">
-                    {CATEGORY_ICON[cat] && <img src={iconUrl(CATEGORY_ICON[cat]) ?? undefined} alt="" />}
-                    <span className="spec-cat-name">{categoryName(db, lang, cat)}</span>
-                  </span>
+                  <span className="spec-cat-name">{categoryName(db, lang, cat)}</span>
                   <span className="spec-cat-count">{units.length}</span>
                   {cat !== OTHER && (
                     <button className="spec-cat-add" title={t(lang, 'addUnits')} onClick={() => props.onAddUnits(cat)}>
-                      {t(lang, 'addUnits')}
+                      +
                     </button>
                   )}
                 </div>
@@ -526,7 +478,6 @@ function SpecEditor(props: {
                         key={key}
                         className={[
                           'spec-unit-card',
-                          u.custom ? 'custom' : '',
                           u.missing ? 'missing' : '',
                           drag.current && refKey(drag.current.ref) === key ? 'dragging' : '',
                           dropSide ? `drop-${dropSide}` : '',
@@ -559,7 +510,7 @@ function SpecEditor(props: {
                       >
                         <button
                           className="spec-unit-card-open"
-                          title={t(lang, 'openInEditor')}
+                          title={u.name}
                           disabled={u.missing}
                           onClick={() => props.onOpenUnit(u.ref)}
                         >
@@ -567,11 +518,8 @@ function SpecEditor(props: {
                             {u.thumb ? <img src={u.thumb} alt="" draggable={false} /> : <span className="spec-unit-noimg" />}
                           </span>
                           <span className="spec-unit-card-name">{u.name}</span>
-                          <span className="spec-unit-card-sub">
-                            {u.custom ? (u.base ? `${t(lang, 'basedOn')} ${u.base}` : t(lang, 'customUnit')) : t(lang, 'gameUnit')}
-                          </span>
                         </button>
-                        {u.custom && <span className="spec-unit-badge">{t(lang, 'customUnit')}</span>}
+                        {!u.custom && !u.missing && <span className="spec-unit-tag">{t(lang, 'gameUnitShort')}</span>}
                         <button
                           className="spec-unit-remove"
                           title={t(lang, 'remove')}
@@ -604,32 +552,48 @@ function SpecEditor(props: {
                     </button>
                   )}
                 </div>
+                {cat !== OTHER && (
+                  <label className="spec-cat-points">
+                    <span>{t(lang, 'points')}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={50}
+                      placeholder="—"
+                      value={value.points[cat] ?? ''}
+                      onChange={(e) => setPoints(cat, e.target.value)}
+                    />
+                  </label>
+                )}
               </div>
             ))}
           </div>
 
-          {/* save bar: sticks to the bottom of the window while the
-              specialization is in view */}
-          <div className={`spec-actions ${dirty ? 'dirty' : ''}`}>
-            <span className="spec-actions-status">
-              {notice ? (
-                <span className={notice.kind === 'error' ? 'saved-error' : 'cloud-ok'}>
-                  {t(lang, notice.key)}
-                  {notice.detail ? `: ${notice.detail}` : ''}
-                </span>
-              ) : dirty ? (
-                <span className="spec-dirty">{t(lang, 'specUnsaved')}</span>
-              ) : (
-                <span className="saved-hint">{t(lang, 'specAllSaved')}</span>
+          {(dirty || notice) && (
+            <div className={`spec-actions ${dirty ? 'dirty' : ''}`}>
+              <span className="spec-actions-status">
+                {notice ? (
+                  <span className={notice.kind === 'error' ? 'saved-error' : 'cloud-ok'}>
+                    {t(lang, notice.key)}
+                    {notice.detail ? `: ${notice.detail}` : ''}
+                  </span>
+                ) : (
+                  <span className="spec-dirty-text">{t(lang, 'specUnsaved')}</span>
+                )}
+              </span>
+              {dirty && (
+                <>
+                  <button className="spec-button" disabled={saving} onClick={props.onRevert}>
+                    {t(lang, 'revertChanges')}
+                  </button>
+                  <button className="spec-button primary" disabled={saving} onClick={props.onSave}>
+                    {saving ? t(lang, 'cloudWorking') : t(lang, 'save')}
+                  </button>
+                </>
               )}
-            </span>
-            <button className="spec-button" disabled={!dirty || saving} onClick={props.onRevert}>
-              {t(lang, 'revertChanges')}
-            </button>
-            <button className="spec-button primary" disabled={!dirty || saving} onClick={props.onSave}>
-              {saving ? t(lang, 'cloudWorking') : t(lang, 'save')}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -663,7 +627,7 @@ function AddUnitsDialog(props: {
         .map(({ c, unit }) => ({
           ref: { source: 'card', id: c.id } as SpecUnitRef,
           name: c.name,
-          sub: [c.author, unit?.HUDName].filter(Boolean).join(' · '),
+          sub: c.author,
           thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
         }))
     return db

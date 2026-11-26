@@ -94,7 +94,7 @@ export default function App() {
 
 /** The card maker: unit picker | card (or kill log) | card panel. */
 function CardMaker() {
-  const { card, compact, style, editMode, lang, view, log } = useAppStore()
+  const { card, compact, style, editMode, lang, view, log, returnView } = useAppStore()
   const setCompact = useAppStore((s) => s.setCompact)
   const setStyle = useAppStore((s) => s.setStyle)
   const setEditMode = useAppStore((s) => s.setEditMode)
@@ -129,6 +129,15 @@ function CardMaker() {
         {card || isLog ? (
           <>
             <div className="toolbar">
+              {/* opened from the China page: one click back to it */}
+              {returnView === 'china' && (
+                <>
+                  <button className="toolbar-back" onClick={() => setView('china')}>
+                    ← {t(lang, 'navChina')}
+                  </button>
+                  <span className="toolbar-sep" />
+                </>
+              )}
               {/* card layout views + the log workspace */}
               <button
                 className={!isLog && compact ? 'active' : ''}

@@ -122,7 +122,6 @@ export function CardPanel() {
           ) : (
             <div className="saved-hint">{t(lang, 'specsLoading')}</div>
           )}
-          <div className="saved-hint">{t(lang, cloudLinked ? 'cardSpecsHintLinked' : 'cardSpecsHintPending')}</div>
         </div>
       )}
     </div>

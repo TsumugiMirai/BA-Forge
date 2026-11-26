@@ -244,7 +244,6 @@ function AdminSection() {
             {t(lang, 'inviteCodeSet')}
           </button>
         </form>
-        <div className="auth-hint">{t(lang, 'inviteCodeHint')}</div>
       </div>
 
       <div className="admin-label">{t(lang, 'membersTitle')}</div>

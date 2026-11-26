@@ -98,7 +98,7 @@ export function AuthForm({ initialMode = 'login', onDone }: { initialMode?: Auth
           {t(lang, 'registerTitle')}
         </button>
       </div>
-      <div className="auth-hint">{t(lang, registering ? 'registerHint' : 'loginHint')}</div>
+      {registering && <div className="auth-hint">{t(lang, 'registerHint')}</div>}
       {expired && !failure && !registering && <div className="saved-error">{t(lang, 'loginExpired')}</div>}
       <label className="auth-field">
         <span>{t(lang, 'account')}</span>
@@ -184,13 +184,12 @@ export function AuthDialog() {
   )
 }
 
-/** In place of a page that needs a login: why, and the form. */
+/** In place of a page that needs a login: what needs it, and the form. */
 export function AuthGate({ reason }: { reason: UiStringKey }) {
   const lang = useAppStore((s) => s.lang)
   return (
     <div className="auth-gate">
-      <h2>{t(lang, 'authGateTitle')}</h2>
-      <p className="auth-hint">{t(lang, reason)}</p>
+      <h2>{t(lang, reason)}</h2>
       <div className="auth-gate-box">
         <AuthForm />
       </div>

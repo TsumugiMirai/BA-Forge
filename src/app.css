@@ -702,3 +702,58 @@ body {
   background: #10151a;
   cursor: pointer;
 }
+
+/* card maker: back to the page the card was opened from */
+.toolbar button.toolbar-back { color: #e8b23a; border-color: #8a6a22; }
+
+/* a unit's card on top of the page it was clicked on (China page) */
+.card-viewer-overlay { align-items: flex-start; padding: 24px 16px; overflow-y: auto; }
+.card-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #171c22;
+  border: 1px solid #2a323c;
+  border-radius: 6px;
+  padding: 10px;
+  max-width: calc(100vw - 32px);
+}
+.card-viewer-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-viewer-group { display: flex; gap: 4px; }
+.card-viewer-spacer { flex: 1; min-width: 8px; }
+.card-viewer-bar button,
+.card-viewer-confirm button {
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: inherit;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.card-viewer-bar button:hover:not(:disabled),
+.card-viewer-confirm button:hover:not(:disabled) { border-color: #56637a; }
+.card-viewer-bar button.active { color: #e8b23a; border-color: #e8b23a; }
+.card-viewer-bar button.primary,
+.card-viewer-confirm button.primary { background: #e8b23a; border-color: #e8b23a; color: #14181c; font-weight: 700; }
+.card-viewer-bar button:disabled,
+.card-viewer-confirm button:disabled { opacity: 0.45; cursor: default; }
+.card-viewer-confirm button.danger { border-color: #7a3a34; color: #ff9b8b; }
+.card-viewer-bar .card-viewer-close { font-size: 16px; line-height: 1; padding: 3px 9px; }
+.card-viewer-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #e8b23a;
+  background: #1d1a12;
+  border: 1px solid #5a4a1c;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.card-viewer-confirm span { flex: 1; }
+.card-viewer-notice { font-size: 12px; }
+.card-viewer-body { display: flex; justify-content: center; min-height: 120px; }

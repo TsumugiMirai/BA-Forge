@@ -81,6 +81,10 @@ create table if not exists api.specs (
   version integer not null default 1,
   updated_at timestamptz not null default now()
 );
+-- points per arsenal category, keyed by UnitCategoryType id ("0" recon …
+-- "6" aircraft), like the game's Specializations.ReconPoints etc.; {} = unset
+-- (added 2026-11-27)
+alter table api.specs add column if not exists points jsonb not null default '{}'::jsonb;
 
 create or replace function private.touch_row() returns trigger
 language plpgsql as $$

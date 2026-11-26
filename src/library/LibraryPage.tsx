@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../state/store'
 import { thumbnailUrl } from '../assets'
 import type { GameDb } from '../data/db'
+import { UnitCategoryLocKey, UnitCategoryType } from '../data/enums'
 import type { CloudCardMeta } from '../cloud/cloudCards'
 import { cloudEnabled } from '../cloud/config'
 import type { SpecRow } from '../cloud/specs'
@@ -18,7 +19,8 @@ import './library.css'
 type Tab = 'online' | 'local'
 /** 'all', a specialization id, or the cards in none */
 type SpecFilter = 'all' | 'none' | number
-type Sort = 'updated' | 'name' | 'author'
+/** the game's arsenal order (category, then name), or newest first */
+type Sort = 'game' | 'updated'
 
 const TAB_KEY = 'ba-recard.libraryTab'
 
@@ -32,13 +34,62 @@ function initialTab(authed: boolean): Tab {
   return authed ? 'online' : 'local'
 }
 
-/** the game unit a card is built on: its name and arsenal picture */
+/** the game unit a card is built on: its name, category and arsenal picture */
 function unitInfo(db: GameDb, unitId: number | null) {
   const unit = unitId != null ? db.units.get(unitId) : undefined
   return {
     unitName: unit?.HUDName ?? unit?.Name ?? '',
+    category: unit?.CategoryType ?? OTHER,
     thumb: thumbnailUrl(unit?.ThumbnailFileName ?? null),
   }
+}
+
+/** arsenal categories in the game's order: recon first, aircraft last */
+const CATEGORY_ORDER = [0, 1, 2, 3, 4, 5, 6]
+/** cards whose game unit is unknown go last */
+const OTHER = 99
+
+interface Group<T> {
+  /** category id, or null for one ungrouped list */
+  category: number | null
+  items: T[]
+}
+
+/** Lay cards out like the game's arsenal (by category, then by name, with a
+ *  heading per category), or newest first in one list. */
+function arrange<T>(
+  db: GameDb,
+  items: T[],
+  sort: Sort,
+  key: (item: T) => { unitId: number | null; name: string; time: number },
+): Group<T>[] {
+  if (sort === 'updated') return [{ category: null, items: [...items].sort((a, b) => key(b).time - key(a).time) }]
+  const groups = new Map<number, T[]>()
+  for (const item of items) {
+    const cat = unitInfo(db, key(item).unitId).category
+    const k = CATEGORY_ORDER.includes(cat) ? cat : OTHER
+    const list = groups.get(k)
+    if (list) list.push(item)
+    else groups.set(k, [item])
+  }
+  return [...CATEGORY_ORDER, OTHER]
+    .filter((cat) => groups.has(cat))
+    .map((cat) => ({
+      category: cat,
+      items: groups.get(cat)!.sort((a, b) => key(a).name.localeCompare(key(b).name, 'zh-Hans-CN', { numeric: true })),
+    }))
+}
+
+function GroupHeading({ db, category, count }: { db: GameDb; category: number | null; count: number }) {
+  const lang = useAppStore((s) => s.lang)
+  if (category == null) return null
+  const name =
+    category === OTHER ? t(lang, 'categoryOther') : db.locOr(UnitCategoryLocKey[category], UnitCategoryType[category] ?? '')
+  return (
+    <div className="library-group">
+      {name} <span>{count}</span>
+    </div>
+  )
 }
 
 /**
@@ -133,7 +184,7 @@ function OnlineLibrary() {
   const [query, setQuery] = useState('')
   const [specFilter, setSpecFilter] = useState<SpecFilter>('all')
   const [mine, setMine] = useState(false)
-  const [sort, setSort] = useState<Sort>('updated')
+  const [sort, setSort] = useState<Sort>('game')
 
   useEffect(() => {
     void refreshCloud()
@@ -165,18 +216,22 @@ function OnlineLibrary() {
     return m
   }, [pool, bySpec])
 
-  const shown = useMemo(() => {
-    const list = pool.filter((c) => {
-      if (specFilter === 'all') return true
-      const ids = bySpec.get(c.id.toLowerCase()) ?? []
-      return specFilter === 'none' ? ids.length === 0 : ids.includes(specFilter)
-    })
-    const byName = (a: CloudCardMeta, b: CloudCardMeta) => a.name.localeCompare(b.name, 'zh-Hans-CN')
-    if (sort === 'name') list.sort(byName)
-    else if (sort === 'author') list.sort((a, b) => a.author.localeCompare(b.author, 'zh-Hans-CN') || byName(a, b))
-    // 'updated': the server's order (newest first)
-    return list
-  }, [pool, specFilter, sort, bySpec])
+  const shown = useMemo(
+    () =>
+      pool.filter((c) => {
+        if (specFilter === 'all') return true
+        const ids = bySpec.get(c.id.toLowerCase()) ?? []
+        return specFilter === 'none' ? ids.length === 0 : ids.includes(specFilter)
+      }),
+    [pool, specFilter, bySpec],
+  )
+  const groups = useMemo(
+    () =>
+      db
+        ? arrange(db, shown, sort, (c) => ({ unitId: c.unit_id, name: c.name, time: Date.parse(c.updated_at) }))
+        : [],
+    [db, shown, sort],
+  )
 
   if (!db) return null
 
@@ -189,7 +244,6 @@ function OnlineLibrary() {
 
   return (
     <div className="library-body">
-      <div className="saved-hint">{t(lang, 'libraryOnlineHint')}</div>
       <div className="library-toolbar">
         <input
           className="picker-search library-search"
@@ -201,14 +255,7 @@ function OnlineLibrary() {
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
           {t(lang, 'filterMine')}
         </label>
-        <label className="library-sort">
-          {t(lang, 'sortLabel')}
-          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-            <option value="updated">{t(lang, 'sortUpdated')}</option>
-            <option value="name">{t(lang, 'sortName')}</option>
-            <option value="author">{t(lang, 'sortAuthor')}</option>
-          </select>
-        </label>
+        <SortSelect sort={sort} onChange={setSort} />
         <span className="library-spacer" />
         <span className="library-count">
           {shown.length} {t(lang, 'cardsUnit')}
@@ -257,25 +304,40 @@ function OnlineLibrary() {
       {!cloudListing && cloudCards.length === 0 && <div className="saved-hint">{t(lang, 'cloudEmpty')}</div>}
       {cloudCards.length > 0 && shown.length === 0 && <div className="saved-hint">{t(lang, 'libraryNoMatch')}</div>}
 
-      <div className="library-grid">
-        {shown.map((c) => (
-          <OnlineTile
-            key={c.id}
-            card={c}
-            db={db}
-            specs={specs}
-            specIds={specsOf(c)}
-            linked={cloudLinked?.id === c.id}
-            busy={cloudBusy}
-            canDelete={canDelete(c)}
-            onOpen={() => open(c.id)}
-            onDelete={() => {
-              if (window.confirm(`${t(lang, 'cloudDeleteConfirm')}\n${c.name}`)) void removeCloudCard(c.id)
-            }}
-          />
-        ))}
-      </div>
+      {groups.map((g) => (
+        <div key={g.category ?? 'all'} className="library-section">
+          <GroupHeading db={db} category={g.category} count={g.items.length} />
+          <div className="library-grid">
+            {g.items.map((c) => (
+              <OnlineTile
+                key={c.id}
+                card={c}
+                db={db}
+                specs={specs}
+                specIds={specsOf(c)}
+                linked={cloudLinked?.id === c.id}
+                busy={cloudBusy}
+                canDelete={canDelete(c)}
+                onOpen={() => open(c.id)}
+                onDelete={() => {
+                  if (window.confirm(`${t(lang, 'cloudDeleteConfirm')}\n${c.name}`)) void removeCloudCard(c.id)
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
+  )
+}
+
+function SortSelect({ sort, onChange }: { sort: Sort; onChange(next: Sort): void }) {
+  const lang = useAppStore((s) => s.lang)
+  return (
+    <select className="library-sort" aria-label={t(lang, 'sortLabel')} value={sort} onChange={(e) => onChange(e.target.value as Sort)}>
+      <option value="game">{t(lang, 'sortGame')}</option>
+      <option value="updated">{t(lang, 'sortUpdated')}</option>
+    </select>
   )
 }
 
@@ -316,7 +378,7 @@ function OnlineTile(props: {
   const setCardSpecs = useAppStore((s) => s.setCardSpecs)
   const [picking, setPicking] = useState(false)
   const pickRef = useRef<HTMLDivElement>(null)
-  const { unitName, thumb } = unitInfo(db, c.unit_id)
+  const { thumb } = unitInfo(db, c.unit_id)
   const mySpecs = (specs ?? []).filter((s) => specIds.includes(s.id))
 
   useEffect(() => {
@@ -335,24 +397,17 @@ function OnlineTile(props: {
           {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="library-thumb-empty" />}
         </span>
         <span className="library-tile-name">{c.name}</span>
-        {unitName && (
-          <span className="library-tile-unit">
-            {t(lang, 'basedOn')} {unitName}
-          </span>
-        )}
       </button>
-      <div className="library-tile-specs">
-        {mySpecs.length > 0 ? (
-          mySpecs.map((s) => (
+      {mySpecs.length > 0 && (
+        <div className="library-tile-specs">
+          {mySpecs.map((s) => (
             <span key={s.id} className="library-spec-tag" title={s.name}>
               <SpecBadge spec={s} size={14} />
               {s.name}
             </span>
-          ))
-        ) : (
-          <span className="library-spec-tag none">{t(lang, 'noSpec')}</span>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
       <div className="library-tile-foot">
         <span className="library-tile-meta" title={c.editor && c.editor !== c.author ? `${t(lang, 'lastSavedBy')} ${c.editor}` : undefined}>
           {c.author || '—'} · {new Date(c.updated_at).toLocaleDateString()}
@@ -401,12 +456,17 @@ function LocalLibrary() {
   const setView = useAppStore((s) => s.setView)
   const fileInput = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<Sort>('game')
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q || !db) return savedCards
     return savedCards.filter((s) => `${s.name}\n${unitInfo(db, s.card.unitId).unitName}`.toLowerCase().includes(q))
   }, [savedCards, query, db])
+  const groups = useMemo(
+    () => (db ? arrange(db, shown, sort, (s) => ({ unitId: s.card.unitId, name: s.name, time: s.savedAt })) : []),
+    [db, shown, sort],
+  )
 
   if (!db) return null
 
@@ -423,7 +483,6 @@ function LocalLibrary() {
 
   return (
     <div className="library-body">
-      <div className="saved-hint">{t(lang, 'libraryLocalHint')}</div>
       <div className="library-toolbar">
         <input
           className="picker-search library-search"
@@ -431,6 +490,7 @@ function LocalLibrary() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <SortSelect sort={sort} onChange={setSort} />
         <span className="library-spacer" />
         <span className="library-count">
           {shown.length} {t(lang, 'cardsUnit')}
@@ -453,53 +513,57 @@ function LocalLibrary() {
       {saveError && <div className="saved-error">{t(lang, 'saveFailed')}</div>}
       <Notice />
       {savedCards.length === 0 && <div className="saved-hint">{t(lang, 'savedEmpty')}</div>}
-      <div className="library-grid">
-        {shown.map((s) => {
-          const { unitName, thumb } = unitInfo(db, s.card.unitId)
-          return (
-            <div key={s.id} className="library-tile">
-              <button className="library-tile-main" title={t(lang, 'openCard')} onClick={() => open(s)}>
-                <span className="library-thumb">
-                  {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="library-thumb-empty" />}
-                        </span>
-                <span className="library-tile-name">{s.name}</span>
-                {unitName && (
-                  <span className="library-tile-unit">
-                    {t(lang, 'basedOn')} {unitName}
-                  </span>
-                )}
-              </button>
-              <div className="library-tile-foot">
-                <span className="library-tile-meta">{new Date(s.savedAt).toLocaleDateString()}</span>
-                <div className="library-tile-actions">
-                  {authed && (
-                    <button
-                      className="library-icon-button"
-                      title={t(lang, 'uploadToCloud')}
-                      disabled={cloudBusy}
-                      onClick={() => void uploadSavedCard(s.id)}
-                    >
-                      ⤒
-                    </button>
-                  )}
-                  <button className="library-icon-button" title={t(lang, 'exportJson')} onClick={() => exportSavedCardJson(s)}>
-                    ⤓
+      {groups.map((g) => (
+        <div key={g.category ?? 'all'} className="library-section">
+          <GroupHeading db={db} category={g.category} count={g.items.length} />
+          <div className="library-grid">
+            {g.items.map((s) => {
+              const { thumb } = unitInfo(db, s.card.unitId)
+              return (
+                <div key={s.id} className="library-tile">
+                  <button className="library-tile-main" title={t(lang, 'openCard')} onClick={() => open(s)}>
+                    <span className="library-thumb">
+                      {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="library-thumb-empty" />}
+                    </span>
+                    <span className="library-tile-name">{s.name}</span>
                   </button>
-                  <button
-                    className="library-icon-button danger"
-                    title={t(lang, 'delete')}
-                    onClick={() => {
-                      if (window.confirm(t(lang, 'deleteConfirm'))) deleteSavedCard(s.id)
-                    }}
-                  >
-                    ×
-                  </button>
+                  <div className="library-tile-foot">
+                    <span className="library-tile-meta">{new Date(s.savedAt).toLocaleDateString()}</span>
+                    <div className="library-tile-actions">
+                      {authed && (
+                        <button
+                          className="library-icon-button"
+                          title={t(lang, 'uploadToCloud')}
+                          disabled={cloudBusy}
+                          onClick={() => void uploadSavedCard(s.id)}
+                        >
+                          ⤒
+                        </button>
+                      )}
+                      <button
+                        className="library-icon-button"
+                        title={t(lang, 'exportJson')}
+                        onClick={() => exportSavedCardJson(s)}
+                      >
+                        ⤓
+                      </button>
+                      <button
+                        className="library-icon-button danger"
+                        title={t(lang, 'delete')}
+                        onClick={() => {
+                          if (window.confirm(t(lang, 'deleteConfirm'))) deleteSavedCard(s.id)
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

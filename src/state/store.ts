@@ -38,7 +38,7 @@ import {
 } from '../auth/auth'
 import type { PasswordChangeResult } from '../cloud/account'
 import { changePassword as serverChangePassword, fetchMe, saveDisplayName } from '../cloud/account'
-import type { SpecRow } from '../cloud/specs'
+import type { SpecInput, SpecRow } from '../cloud/specs'
 import { ensureSpecs, listSpecs, setCardSpecs as serverSetCardSpecs } from '../cloud/specs'
 import type { UiStringKey } from '../ui/i18n'
 
@@ -135,6 +135,14 @@ interface AppState {
   pendingSpecIds: number[]
   /** a card's specializations are being saved */
   specBusy: boolean
+  /** China page: which specializations are open, and their unsaved edits
+   *  with the version each started from — kept here so they survive a trip
+   *  to the card maker */
+  chinaOpen: Record<number, boolean>
+  chinaDrafts: Record<number, ChinaDraft>
+  /** the page the card maker's back button returns to (set when a card was
+   *  opened there from the China page) */
+  returnView: View | null
 
   load(): Promise<void>
   setLang(lang: Lang): Promise<void>
@@ -202,6 +210,15 @@ interface AppState {
   /** put an online card into exactly these specializations; true on success */
   setCardSpecs(cardId: string, specIds: number[]): Promise<boolean>
   togglePendingSpec(specId: number): void
+  setChinaOpen(update: (open: Record<number, boolean>) => Record<number, boolean>): void
+  setChinaDrafts(update: (drafts: Record<number, ChinaDraft>) => Record<number, ChinaDraft>): void
+  setReturnView(view: View | null): void
+}
+
+/** unsaved edits of a specialization and the version they started from */
+export interface ChinaDraft {
+  value: SpecInput
+  version: number
 }
 
 function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardModel {
@@ -292,6 +309,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   specsNotice: null,
   pendingSpecIds: [],
   specBusy: false,
+  chinaOpen: {},
+  chinaDrafts: {},
+  returnView: null,
 
   async load() {
     try {
@@ -324,7 +344,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectUnit(unitId) {
     const { db } = get()
     // a fresh card from the arsenal is not an online entry
-    const fresh = { dirty: false, colorTarget: null, cloudLinked: null, pendingSpecIds: [], cloudNotice: null }
+    const fresh = {
+      dirty: false,
+      colorTarget: null,
+      cloudLinked: null,
+      pendingSpecIds: [],
+      cloudNotice: null,
+      returnView: null,
+    }
     if (!db || unitId == null) {
       set({ selectedUnitId: unitId, selection: {}, card: null, ...fresh })
       return
@@ -365,12 +392,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (db && card)
         set({ log: { entries: [emptyLogEntry(logUnitFromCard(db, card))] }, editMode: true })
     }
+    const work = view === 'card' || view === 'log'
     set({
       view,
       colorTarget: null,
       // notices belong to the page they were shown on
       cloudNotice: null,
-      ...(view === 'card' || view === 'log' ? { workView: view } : {}),
+      // the back button is for one trip only
+      ...(work ? { workView: view } : { returnView: null }),
     })
   },
 
@@ -546,6 +575,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       cloudNotice: null,
       specs: null,
       specsNotice: null,
+      chinaDrafts: {},
+      chinaOpen: {},
     })
   },
 
@@ -727,6 +758,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     } finally {
       set({ specBusy: false })
     }
+  },
+
+  setChinaOpen(update) {
+    set((s) => ({ chinaOpen: update(s.chinaOpen) }))
+  },
+
+  setChinaDrafts(update) {
+    set((s) => ({ chinaDrafts: update(s.chinaDrafts) }))
+  },
+
+  setReturnView(view) {
+    set({ returnView: view })
   },
 
   togglePendingSpec(specId) {

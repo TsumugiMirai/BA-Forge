@@ -16,6 +16,9 @@ export interface SpecRow {
   icon: string | null
   description: string
   units: SpecUnitRef[]
+  /** points per arsenal category, keyed by UnitCategoryType id ("0" recon …
+   *  "6" aircraft), like the game's Specializations.ReconPoints etc. */
+  points?: SpecPoints
   /** bumped by a trigger on every update; used to detect concurrent edits */
   version: number
   updated_at: string
@@ -23,7 +26,9 @@ export interface SpecRow {
   editor?: string
 }
 
-export type SpecInput = Pick<SpecRow, 'name' | 'icon' | 'description' | 'units'>
+export type SpecPoints = Record<string, number>
+
+export type SpecInput = Pick<SpecRow, 'name' | 'icon' | 'description' | 'units'> & { points: SpecPoints }
 
 const TABLE = 'specs'
 

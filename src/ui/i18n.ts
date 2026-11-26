@@ -27,10 +27,7 @@ const STRINGS = {
   cancel: { eng: 'Cancel', chi: '取消' },
   save: { eng: 'Save', chi: '保存' },
   savedCards: { eng: 'Saved Cards', chi: '已保存卡片' },
-  savedEmpty: {
-    eng: 'Nothing saved yet. In the card maker, “Save in this browser” keeps the card here.',
-    chi: '还没有保存的卡片。在「卡面制作」里点「保存到本地」，卡片就会出现在这里。',
-  },
+  savedEmpty: { eng: 'Nothing saved in this browser yet.', chi: '还没有本地保存的卡片。' },
   load: { eng: 'Load', chi: '载入' },
   delete: { eng: 'Delete', chi: '删除' },
   deleteConfirm: { eng: 'Delete this saved card?', chi: '删除这张已保存的卡片？' },
@@ -43,19 +40,12 @@ const STRINGS = {
   // Accounts (login / sign-up with an invite code)
   loginTitle: { eng: 'Log in', chi: '登录' },
   registerTitle: { eng: 'Sign up', chi: '注册' },
-  loginHint: {
-    eng: 'Log in to use the online library and the China specialization page.',
-    chi: '登录后可以使用在线卡库和中国专精页。',
-  },
-  registerHint: {
-    eng: 'Signing up needs an invite code. Account: 2–24 characters, no spaces or slashes. Password: at least 6 characters.',
-    chi: '注册需要邀请码。账号 2–24 个字符，不能有空格或斜杠；密码至少 6 位。',
-  },
+  registerHint: { eng: 'Needs an invite code. Account 2–24 characters, password 6 or more.', chi: '需要邀请码。账号 2–24 位，密码至少 6 位。' },
   account: { eng: 'Account', chi: '账号' },
   password: { eng: 'Password', chi: '密码' },
   passwordRepeat: { eng: 'Repeat password', chi: '再输一次密码' },
   displayName: { eng: 'Display name', chi: '昵称' },
-  displayNameHint: { eng: 'Display name (shown on cards, optional)', chi: '昵称（显示在卡片上，可不填）' },
+  displayNameHint: { eng: 'Display name (optional)', chi: '昵称（可不填）' },
   inviteCode: { eng: 'Invite code', chi: '邀请码' },
   loginButton: { eng: 'Log in', chi: '登录' },
   registerButton: { eng: 'Sign up and log in', chi: '注册并登录' },
@@ -78,12 +68,8 @@ const STRINGS = {
   registerTaken: { eng: 'That account name is taken; pick another.', chi: '这个账号已经有人注册了，换一个吧。' },
   logout: { eng: 'Log out', chi: '退出登录' },
   loginOrRegister: { eng: 'Log in / Sign up', chi: '登录 / 注册' },
-  authGateTitle: { eng: 'Log in to continue', chi: '登录后使用' },
-  authGateLibrary: {
-    eng: 'The online library needs a login. Cards saved in this browser are under “Saved in this browser” and need none.',
-    chi: '在线卡库需要登录。保存在本机的卡片在「本地保存」里，不用登录。',
-  },
-  authGateChina: { eng: 'The China specialization page needs a login.', chi: '中国专精页需要登录。' },
+  authGateLibrary: { eng: 'The online library needs a login', chi: '在线卡库需要登录' },
+  authGateChina: { eng: 'The China specializations need a login', chi: '中国专精需要登录' },
 
   // Account dialog
   accountTitle: { eng: 'Account', chi: '账户' },
@@ -91,7 +77,7 @@ const STRINGS = {
   roleAdmin: { eng: 'Admin', chi: '管理员' },
   roleMember: { eng: 'Member', chi: '成员' },
   saveDisplayName: { eng: 'Save name', chi: '保存昵称' },
-  displayNameSaved: { eng: 'Name saved. Cards you save from now on show it.', chi: '昵称已保存，之后保存的卡片会显示新昵称。' },
+  displayNameSaved: { eng: 'Name saved.', chi: '昵称已保存。' },
   changePasswordTitle: { eng: 'Change password', chi: '修改密码' },
   oldPassword: { eng: 'Current password', chi: '当前密码' },
   newPassword: { eng: 'New password (6+ characters)', chi: '新密码（至少 6 位）' },
@@ -108,10 +94,6 @@ const STRINGS = {
   inviteCodeNone: { eng: 'none (nobody can sign up)', chi: '无（现在没人能注册）' },
   inviteCodeNew: { eng: 'New invite code', chi: '新邀请码' },
   inviteCodeSet: { eng: 'Use this code', chi: '换成这个' },
-  inviteCodeHint: {
-    eng: 'Only the code in use works for signing up; changing it retires the old one. Existing accounts stay.',
-    chi: '只有当前邀请码能注册；换码后旧码作废，已注册的账号不受影响。',
-  },
   inviteCodeInvalid: { eng: 'An invite code needs 4–64 characters.', chi: '邀请码需要 4–64 个字符。' },
   inviteUses: { eng: 'used', chi: '已用' },
   membersTitle: { eng: 'Accounts', chi: '账号列表' },
@@ -132,10 +114,6 @@ const STRINGS = {
 
   // China specialization setup page
   chinaTitle: { eng: 'China specialization setup', chi: '中国专精设置' },
-  chinaHint: {
-    eng: 'Names, emblems, descriptions and units of the six specializations. Saved online and shared by everyone who logs in; each specialization saves on its own. Drag units to reorder them; click one to open its card.',
-    chi: '六个专精的名称、徽章、介绍和单位。在线保存，登录的人都能修改，每个专精单独保存。拖动单位卡片调整顺序，点击打开它的卡面。',
-  },
   expandAll: { eng: 'Expand all', chi: '全部展开' },
   moveLeft: { eng: 'Move left', chi: '左移' },
   moveRight: { eng: 'Move right', chi: '右移' },
@@ -152,20 +130,19 @@ const STRINGS = {
   revertChanges: { eng: 'Undo changes', chi: '撤销修改' },
   specSaved: { eng: 'Saved.', chi: '已保存。' },
   specUnsaved: { eng: 'Unsaved changes', chi: '有未保存的修改' },
-  specConflict: {
-    eng: 'Someone else saved this specialization meanwhile. Undo your changes to see their version, then redo yours.',
-    chi: '这个专精刚被别人保存过。请点“撤销修改”看最新版本，再重新修改。',
-  },
+  specConflict: { eng: 'Someone else saved this specialization meanwhile. Undo your changes, then redo them.', chi: '这个专精刚被别人保存过，请撤销修改后重新修改。' },
   specsMissing: {
     eng: 'The server has no specialization table yet (set it up with server/install.sh).',
     chi: '服务器上还没有专精表（用 server/install.sh 安装）。',
   },
   customUnit: { eng: 'Custom', chi: '自制' },
-  gameUnit: { eng: 'Game unit', chi: '游戏原版单位' },
-  unitsUnit: { eng: 'units', chi: '个单位' },
-  specNoDescription: { eng: 'No description yet.', chi: '还没有介绍。' },
-  editSpecInfo: { eng: 'Edit name, emblem and description', chi: '编辑名称、徽章和介绍' },
-  specAllSaved: { eng: 'All changes saved.', chi: '没有未保存的修改。' },
+  gameUnitShort: { eng: 'Stock', chi: '原版' },
+  points: { eng: 'Points', chi: '分数' },
+  pointsUnit: { eng: 'pts', chi: '分' },
+  openInMaker: { eng: 'Open in card maker', chi: '在卡面制作中打开' },
+  saveAndClose: { eng: 'Save & close', chi: '保存并关闭' },
+  sortGame: { eng: 'Game order', chi: '游戏顺序' },
+  editSpecInfo: { eng: 'Edit', chi: '编辑信息' },
   deletedCard: { eng: '(deleted card)', chi: '（卡片已删除）' },
   categoryOther: { eng: 'Other', chi: '其他' },
   openInEditor: { eng: 'Open in the card editor', chi: '在卡片编辑器中打开' },
@@ -175,26 +152,17 @@ const STRINGS = {
 
   // Shared online library
   cloudTitle: { eng: 'Online library', chi: '在线卡库' },
-  cloudHint: {
-    eng: 'Shared with everyone who logs in.',
-    chi: '登录的人都能看到和修改。',
-  },
   cloudSave: { eng: 'Upload to the online library', chi: '上传到在线卡库' },
   cloudUpdate: { eng: 'Save to the online library', chi: '保存到在线卡库' },
   cloudSaveAsNew: { eng: 'Save as new online card', chi: '另存为新的在线卡片' },
-  cloudEditing: { eng: 'Editing online card', chi: '正在编辑在线卡片' },
   cloudRefresh: { eng: 'Refresh list', chi: '刷新列表' },
-  cloudFilter: { eng: 'Filter by name or author…', chi: '按卡名或作者筛选…' },
   cloudEmpty: { eng: 'Nothing online yet.', chi: '在线卡库还是空的。' },
   cloudLoading: { eng: 'Loading…', chi: '加载中…' },
   cloudWorking: { eng: 'Working…', chi: '处理中…' },
   cloudCreated: { eng: 'Uploaded to the online library.', chi: '已上传到在线卡库。' },
   cloudUpdated: { eng: 'Online card saved.', chi: '在线卡片已保存。' },
   cloudDeleted: { eng: 'Online card deleted.', chi: '在线卡片已删除。' },
-  cloudConflict: {
-    eng: 'Someone saved this card after you opened it. Open it again to see their version, or save yours as a new card.',
-    chi: '这张卡片在你打开后被别人保存过。请重新打开查看最新版本，或把你的版本另存为新卡片。',
-  },
+  cloudConflict: { eng: 'Someone saved this card after you opened it. Open it again, or save yours as a new card.', chi: '这张卡在你打开后被别人保存过。请重新打开，或另存为新卡。' },
   cloudMissing: { eng: 'That card is no longer online.', chi: '这张卡片已经不在在线卡库里了。' },
   cloudFailed: { eng: 'Online library error', chi: '在线卡库出错' },
   cloudDeleteConfirm: {
@@ -207,29 +175,17 @@ const STRINGS = {
   },
 
   // Library page
-  libraryOnlineHint: {
-    eng: 'Shared with everyone who logs in. Anyone can open and save cards; only the author and admins can delete one.',
-    chi: '登录的人都能看到、打开和修改；只有作者和管理员能删除。',
-  },
   libraryLocal: { eng: 'Saved in this browser', chi: '本地保存' },
-  libraryLocalHint: {
-    eng: 'Kept only in this browser, no login needed. Export a card as a JSON file to pass it on.',
-    chi: '只存在这个浏览器里，不用登录。可以导出成 JSON 文件发给别人。',
-  },
   libraryFilter: { eng: 'Search name, author or unit…', chi: '搜索卡名、作者或单位…' },
   filterAll: { eng: 'All', chi: '全部' },
   filterUnassigned: { eng: 'Unassigned', chi: '未分配' },
   filterMine: { eng: 'Mine only', chi: '只看我的' },
   sortUpdated: { eng: 'Recently saved', chi: '最近修改' },
-  sortName: { eng: 'Name', chi: '名称' },
-  sortAuthor: { eng: 'Author', chi: '作者' },
   sortLabel: { eng: 'Sort', chi: '排序' },
   cardsUnit: { eng: 'cards', chi: '张' },
   openCard: { eng: 'Open', chi: '打开' },
   assignSpecs: { eng: 'Specs', chi: '专精' },
-  noSpec: { eng: 'No specialization', chi: '未分配专精' },
   lastSavedBy: { eng: 'saved by', chi: '最后修改' },
-  basedOn: { eng: 'Based on', chi: '基于' },
   uploadToCloud: { eng: 'Upload to the online library', chi: '上传到在线卡库' },
   libraryNoMatch: { eng: 'No cards match these filters.', chi: '没有符合条件的卡片。' },
 
@@ -238,23 +194,9 @@ const STRINGS = {
   cardIsOnline: { eng: 'Online card', chi: '在线卡片' },
   cardNotOnline: { eng: 'Not in the online library yet', chi: '还没上传到在线卡库' },
   saveLocal: { eng: 'Save in this browser', chi: '保存到本地' },
-  savedLocally: {
-    eng: 'Saved in this browser (Library → Saved in this browser).',
-    chi: '已保存到本地（在「卡库 → 本地保存」里）。',
-  },
+  savedLocally: { eng: 'Saved in this browser.', chi: '已保存到本地。' },
   cardSpecsTitle: { eng: 'China specialization', chi: '中国专精' },
-  cardSpecsHintLinked: {
-    eng: 'Click to add or remove; saved right away. Leaving it unassigned is fine.',
-    chi: '点一下加入或移出，马上生效；也可以不分配。',
-  },
-  cardSpecsHintPending: {
-    eng: 'The card joins the picked specializations when it is uploaded. Leaving it unassigned is fine.',
-    chi: '上传时一起加入所选专精；也可以不分配。',
-  },
-  cardLoginHint: {
-    eng: 'Log in to upload cards to the online library and assign specializations.',
-    chi: '登录后可以上传到在线卡库、给卡片分配专精。',
-  },
+  cardLoginHint: { eng: 'Log in to upload cards and assign specializations.', chi: '登录后可以上传和分配专精。' },
   specsLoading: { eng: 'Loading specializations…', chi: '正在加载专精…' },
   importJson: { eng: 'Import JSON…', chi: '导入 JSON…' },
   importFailed: {
