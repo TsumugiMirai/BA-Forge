@@ -1,120 +1,53 @@
-# [BA-ReCard](https://johnjinhm.github.io/BA-ReCard/)
+# BA Forge
 
-**Data build: 1.2.2.1** — 545 units, 24 tables, 16,805 rows; includes DLC3 Russian Guard.
+方便地自制《断箭》（Broken Arrow）单位与专精的网页工具。
 
-Reconstruct Broken Arrow's **unit info cards** — render a faithful card from
-unit data, support manual edits and image import, and export to PNG.
+网址：<https://tsumugimirai.github.io/BA-Forge/>
 
-Data source: **[BA-Units](https://github.com/JohnJinHM/BA-Units)**
+## 功能
 
-Built with **React + TypeScript + Vite**, deployed to GitHub Pages.
+- **卡面制作**：按游戏数据生成和游戏里一样的单位卡（默认、详细两种视图）。卡上每个数值都能改，也能导入立绘、导出 PNG。卡片可以保存到本机，也可以上传到在线卡库。
+- **卡库**：在线卡库由登录的人共享，可以按专精或未分配筛选，按游戏顺序排列。另有本机保存的卡片。
+- **中国专精**：设置专精的名称、徽章、介绍和各类别分数。自制卡和游戏单位按类别放进专精，可以拖动排序。
 
-> 🇨🇳 [中文](README_CN.md)
+不登录也能做卡、保存到本机；在线卡库和中国专精需要账号，注册需要邀请码。
 
-## Contents
-
-```
-src/
-  data/        table types, loader/indexes (GameDb), unit→card resolver
-  card/        CardModel (the editable view model) + the card renderer
-  state/       zustand store (selection, variants, edits, compact mode)
-  ui/          unit picker, variant panel, portrait crop dialog
-  export/      DOM → PNG rasterizer (html-to-image, 2× pixel ratio)
-public/
-  data/        game database dump (24 tables + localization, from BA-Units)
-  assets/      extracted game assets (icons/chrome/weapons/ammo/flags/
-               portraits/thumbnails/fonts) — produced by scripts/extract-assets.mjs
-docs/
-  DATA_SCHEMA.md       the 24 tables and their join map
-  INFOCARD_SCHEMA.md   the in-game card controller/prefab → data mapping
-  extracted/
-    PREFAB_LAYOUT.md   extracted card geometry, colors, fonts (408×710 spec)
-    ASSETS.md          extracted asset catalogue + InfocardConfig mapping
-```
-
-## Development
+## 本地运行
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173/BA-ReCard/
-npm run build      # type-check + production build to dist/
-npm run verify     # every unit/option, defaults, localization and asset paths
-npm run deploy     # build + publish dist/ to the gh-pages branch
+npm run dev      # http://localhost:5173/BA-Forge/
+npm run build    # 类型检查并打包到 dist/
+npm run verify   # 检查全部单位、配装、本地化和图片路径
 ```
 
-To refresh assets, re-run AssetRipper on the game, then:
+推送到 `main` 后，GitHub Actions 会自动部署到 GitHub Pages。
 
-```sh
-node scripts/extract-assets.mjs <path-to-ExportedProject>
+## 服务器
+
+在线卡库、账号和专精数据保存在项目自己的服务器上：PostgreSQL + PostgREST，经 nginx 提供 `https://110.42.238.185/ba-recard/api`（地址见 `src/cloud/config.ts`）。安装、备份和重置密码见 [server/README.md](server/README.md)。服务器上的程序和路径沿用 `ba-recard` 这个名字。
+
+## 目录
+
+```
+src/
+  card/      卡面模型与渲染
+  data/      游戏数据加载，单位到卡面的换算
+  state/     页面状态（当前卡片、在线卡库、专精、账号）
+  ui/        页头、单位列表、卡片面板、弹窗
+  library/   卡库页
+  china/     中国专精页
+  auth/      登录、注册、账户设置
+  cloud/     服务器接口
+public/data/    游戏数据库（24 张表 + 本地化，数据版本 1.2.2.1）
+public/assets/  从游戏导出的图标、图片和字体
+server/         服务器端安装文件
+docs/           数据表、卡面布局和素材说明
 ```
 
-To refresh the database, run [BA-Units](https://github.com/JohnJinHM/BA-Units)
-and replace `public/data/`, including `database.json` and the manifest. Refresh
-assets afterward, then run `npm run verify` and `npm run build`.
+## 来源与许可
 
-With the built app served on a local preview, run `node scripts/e2e-refresh.mjs <url>`
-to check DLC3 cards, default loadouts and PNG export in a browser.
-
-### Online library (optional)
-
-The right sidebar's online library is a card library shared by everyone who
-logs in with the page's shared account: upload, open, change and save, save as
-new, delete. The China specialization page (`#china`) keeps its six
-specializations on the same server. Both live on the project's own server:
-PostgreSQL + PostgREST behind nginx at `https://110.42.238.185/ba-recard/api`
-(set in `src/cloud/config.ts`); the server checks the login and hands out data
-only with the token it issued. Setup, password changes and backups:
-[`server/README.md`](server/README.md). A version check stops two people from
-silently overwriting each other's edits, and large imported images are
-re-encoded as WebP before upload.
-
-## How it works
-
-1. `loadGameDb()` fetches all 24 tables + localization and builds id/FK indexes.
-2. `resolveCard(db, unitId, selection)` joins a unit's armor/mobility/sensors/
-   abilities/turrets/weapons/ammo, applies the selected Modification **Options**
-   (armor/mobility/turret/cost/name overrides — the in-game variant system),
-   and emits a plain `CardModel` where every visible value is a string.
-3. `UnitCard` renders the `CardModel` to match the in-game prefab: 408×710,
-   hero portrait bar (name, points, abilities, armor, stat icons) over a
-   two-column weapons area; compact mode swaps in the dense per-weapon rows.
-   The current card style also adds the return-to-battlegroup timer, weapon
-   Suppressed/close-quarters icons, and ammunition guidance icons; a **Legacy**
-   toggle keeps the previous card style.
-4. **Edit mode** turns every value on the card into a contentEditable span —
-   edits mutate the `CardModel` copy, so anything can be overridden (or set
-   to `-`).
-5. **Import image…** uploads an image through a crop dialog fixed to the in-game
-   816×550 portrait frame.
-6. **Export PNG** rasterizes the card DOM at 2× with edit outlines hidden.
-
-## Documentation
-
-- [docs/DATA_SCHEMA.md](docs/DATA_SCHEMA.md) — the 24 JSON tables extracted from
-  the game's `DataBaseCompiled.asset` and how they join.
-- [docs/INFOCARD_SCHEMA.md](docs/INFOCARD_SCHEMA.md) — how the in-game
-  `UnitInfoCard` controller and its prefabs map to database fields (expanded vs
-  compact).
-- [docs/extracted/PREFAB_LAYOUT.md](docs/extracted/PREFAB_LAYOUT.md) — card
-  geometry, palette, and fonts extracted from the prefab YAML (408×710 spec).
-- [docs/extracted/ASSETS.md](docs/extracted/ASSETS.md) — the extracted asset
-  catalogue and `InfocardConfig` sprite mapping.
-
-## Roadmap
-
-- [x] Data loader + join layer over `public/data/tables/`
-- [x] Unit → card view model
-- [x] Expanded card renderer
-- [x] Compact card renderer
-- [x] Manual edit support
-- [x] Image import with crop (816×550)
-- [x] PNG export
-- [x] Sprite/font asset pipeline from the game export
-- [x] Localization toggle (eng/chi)
-- [x] Customizable weapon slots (add/remove, edit counts)
-- [x] Weapon slot fill: pick a weapon from the database (icon + name + type) or
-      upload a custom icon
-- [x] Tag-icon slots (4): pick from the icon library or upload
-- [x] Custom card database (save/load edited cards as JSON in localStorage)
-- [x] New card style: battlegroup timer + weapon Suppressed/CQC + ammo guidance icons
-- [x] Legacy card-style toggle
+- 本项目由 [JohnJinHM/BA-ReCard](https://github.com/JohnJinHM/BA-ReCard)（作者 Starfall，MIT 许可证）发展而来，保留了原项目的全部提交历史。
+- 游戏数据来自 [BA-Units](https://github.com/JohnJinHM/BA-Units)。
+- 《断箭》的游戏数据、图片和字体归游戏开发商和发行商所有。本项目是玩家自制工具，与官方无关。
+- 代码以 [MIT 许可证](LICENSE) 开源。

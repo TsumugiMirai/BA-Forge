@@ -54,7 +54,7 @@ export function AppHeader() {
 
   return (
     <header className="app-header">
-      <div className="app-brand">BA ReCard</div>
+      <div className="app-brand">BA Forge</div>
       <nav className="app-nav">
         {PAGES.map(({ page, label, needsLogin }) => (
           <button
@@ -72,7 +72,7 @@ export function AppHeader() {
       <div className="app-header-actions">
         <a
           className="github-link"
-          href="https://github.com/JohnJinHM/BA-ReCard/"
+          href="https://github.com/TsumugiMirai/BA-Forge"
           target="_blank"
           rel="noreferrer"
           title={t(lang, 'viewSource')}

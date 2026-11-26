@@ -11,7 +11,7 @@ const pkg = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
 const isDeck = pkg.name === 'ba-deckeditor'
 const BASE = process.argv[2] ?? (isDeck
   ? 'http://127.0.0.1:4173/BA-DeckEditor/'
-  : 'http://127.0.0.1:4174/BA-ReCard/')
+  : 'http://127.0.0.1:4174/BA-Forge/')
 const out = join(tmpdir(), 'ba-refresh-ui', pkg.name)
 await mkdir(out, { recursive: true })
 const units = JSON.parse(await readFile(join(ROOT, 'public/data/tables/Units.json'), 'utf8'))

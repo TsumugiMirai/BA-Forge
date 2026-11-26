@@ -42,7 +42,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Pages have their own addresses (…/BA-ReCard/#library, #china): the store
+  // Pages have their own addresses (…/BA-Forge/#library, #china): the store
   // opens the one the page loads with; here the address follows the page, and
   // back/forward switch pages.
   useEffect(() => {

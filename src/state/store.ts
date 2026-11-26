@@ -58,7 +58,7 @@ export type View = 'card' | 'log' | 'library' | 'china'
 /** the card maker's two workspaces */
 export type WorkView = 'card' | 'log'
 
-/** the page an address opens (…/BA-ReCard/#library), null for the card maker */
+/** the page an address opens (…/BA-Forge/#library), null for the card maker */
 export function viewFromHash(hash: string): View | null {
   if (hash === '#china') return 'china'
   if (hash === '#library') return 'library'
