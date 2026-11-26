@@ -25,7 +25,9 @@ import {
   updateCloudCard,
 } from '../cloud/cloudCards'
 import { compressCardImages } from '../cloud/compressImages'
-import { checkLogin, isRemembered, rememberLogin } from '../auth/auth'
+import { CloudAuthError } from '../cloud/rest'
+import type { LoginResult } from '../auth/auth'
+import { isLoggedIn, login as serverLogin, logout as forgetLogin, onLoginExpired } from '../auth/auth'
 import type { UiStringKey } from '../ui/i18n'
 
 /** result line shown under the online library */
@@ -87,6 +89,9 @@ interface AppState {
   author: string
   /** passed the page login (src/auth); online features need it */
   authed: boolean
+  /** the server turned the remembered login down (it expired, or the
+   *  password was changed); the login form says so */
+  loginExpired: boolean
 
   load(): Promise<void>
   setLang(lang: Lang): Promise<void>
@@ -121,8 +126,8 @@ interface AppState {
   cancelPending(): void
 
   setAuthor(name: string): void
-  /** check the page login; true when it matches (and remember it) */
-  login(account: string, password: string): Promise<boolean>
+  /** log in on the server; 'ok' also remembers the login in this browser */
+  login(account: string, password: string): Promise<LoginResult>
   logout(): void
   /** fetch the online library list */
   refreshCloud(): Promise<void>
@@ -174,6 +179,12 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/** the notice for a failed online action; none when the login was turned
+ *  down, since the login form replaces the panel then */
+function cloudFailure(e: unknown): CloudNotice | null {
+  return e instanceof CloudAuthError ? null : { kind: 'error', key: 'cloudFailed', detail: errorText(e) }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   db: null,
   loadError: null,
@@ -199,7 +210,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   cloudNotice: null,
   cloudLinked: null,
   author: initialAuthor(),
-  authed: isRemembered(),
+  authed: isLoggedIn(),
+  loginExpired: false,
 
   async load() {
     try {
@@ -392,17 +404,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async login(account, password) {
-    const ok = await checkLogin(account, password)
-    if (ok) {
-      rememberLogin(true)
-      set({ authed: true })
-    }
-    return ok
+    const result = await serverLogin(account, password)
+    if (result === 'ok') set({ authed: true, loginExpired: false })
+    return result
   },
 
   logout() {
-    rememberLogin(false)
-    set({ authed: false, cloudCards: [], cloudLinked: null, cloudNotice: null })
+    forgetLogin()
+    set({ authed: false, loginExpired: false, cloudCards: [], cloudLinked: null, cloudNotice: null })
   },
 
   setAuthor(name) {
@@ -419,7 +428,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       set({ cloudCards: await listCloudCards() })
     } catch (e) {
-      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+      set({ cloudNotice: cloudFailure(e) })
     } finally {
       set({ cloudListing: false })
     }
@@ -446,7 +455,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         cloudLinked: { id: row.id, version: row.version },
       })
     } catch (e) {
-      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+      set({ cloudNotice: cloudFailure(e) })
     } finally {
       set({ cloudBusy: false })
     }
@@ -477,10 +486,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().refreshCloud()
     } catch (e) {
       set({
-        cloudNotice:
-          e instanceof CloudConflictError
-            ? { kind: 'error', key: 'cloudConflict' }
-            : { kind: 'error', key: 'cloudFailed', detail: errorText(e) },
+        cloudNotice: e instanceof CloudConflictError ? { kind: 'error', key: 'cloudConflict' } : cloudFailure(e),
       })
     } finally {
       set({ cloudBusy: false })
@@ -497,9 +503,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         cloudNotice: { kind: 'ok', key: 'cloudDeleted' },
       }))
     } catch (e) {
-      set({ cloudNotice: { kind: 'error', key: 'cloudFailed', detail: errorText(e) } })
+      set({ cloudNotice: cloudFailure(e) })
     } finally {
       set({ cloudBusy: false })
     }
   },
 }))
+
+// The server turned the remembered login down (expired, or the password was
+// changed): show the login form again. The card being edited, and which
+// online card it came from, stay, so it can still be saved after logging in.
+onLoginExpired(() => useAppStore.setState({ authed: false, loginExpired: true, cloudCards: [], cloudNotice: null }))

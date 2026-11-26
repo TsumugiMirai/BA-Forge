@@ -1,0 +1,15 @@
+#!/bin/bash
+# Dump the BA-ReCard database to /var/backups/ba-recard and keep the newest 30.
+# Run daily by ba-recard-backup.timer; can also be run by hand (sudo).
+# Restore: see server/README.md.
+set -euo pipefail
+umask 077
+dir=/var/backups/ba-recard
+mkdir -p "$dir"
+file="$dir/ba_recard-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+cd /
+# --create: the dump also recreates the database and its access rules
+runuser -u postgres -- pg_dump --create --dbname=ba_recard | gzip -9 > "$file.part"
+mv "$file.part" "$file"
+ls -1t "$dir"/ba_recard-*.sql.gz | tail -n +31 | xargs -r rm -f --
+echo "saved $file"

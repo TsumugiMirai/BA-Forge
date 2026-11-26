@@ -1,0 +1,31 @@
+[Unit]
+Description=BA-ReCard online library API (PostgREST)
+Documentation=https://github.com/TsumugiMirai/BA-ReCard/tree/main/server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ba-recard
+Group=ba-recard
+ExecStart=/opt/ba-recard/bin/postgrest /etc/ba-recard/postgrest.conf
+# SIGUSR2 = re-read the config file, SIGUSR1 = reload the schema cache
+ExecReload=/bin/kill -USR2 $MAINPID
+Restart=always
+RestartSec=3
+MemoryMax=200M
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

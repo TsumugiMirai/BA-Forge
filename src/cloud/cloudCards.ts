@@ -1,7 +1,7 @@
-// Client for the shared online card library: the `cards` table of a Supabase
-// project, reached through its PostgREST API with plain fetch (no SDK). The
-// table is open to everyone who has the page; the app only shows it after the
-// simple login (src/auth). Schema and policies: docs/cloud-setup.sql.
+// Client for the shared online card library: the `cards` table on the
+// project's server, reached through its PostgREST API with plain fetch. Only
+// logged-in requests (src/auth) may read or change it. Schema:
+// server/schema.sql.
 
 import { CloudConflictError, endpoint, headers, request } from './rest'
 

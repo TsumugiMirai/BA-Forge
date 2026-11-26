@@ -1,7 +1,9 @@
-// Shared plumbing for the Supabase REST (PostgREST) tables the app uses:
-// `cards` (online card library) and `specs` (China specialization setup).
+// Shared plumbing for the server's REST API (PostgREST, see server/): the
+// `cards` (online card library) and `specs` (China specialization setup)
+// tables. Every request carries the login token from src/auth.
 
-import { CLOUD_KEY, CLOUD_URL } from './config'
+import { authHeader, loginRejected } from '../auth/auth'
+import { CLOUD_URL } from './config'
 
 /** someone else saved the row after it was loaded here */
 export class CloudConflictError extends Error {
@@ -10,26 +12,28 @@ export class CloudConflictError extends Error {
   }
 }
 
-/** the table does not exist yet (its setup SQL has not been run) */
+/** the table does not exist yet (server/schema.sql has not been run) */
 export class CloudMissingTableError extends Error {
   constructor(table: string) {
     super(`missing table ${table}`)
   }
 }
 
+/** the server refused the login token; the page shows the login again */
+export class CloudAuthError extends Error {
+  constructor() {
+    super('login expired')
+  }
+}
+
 const TIMEOUT_MS = 30000
 
 export function endpoint(table: string, query = ''): string {
-  return `${CLOUD_URL.trim().replace(/\/+$/, '')}/rest/v1/${table}${query}`
+  return `${CLOUD_URL}/${table}${query}`
 }
 
 export function headers(extra: Record<string, string> = {}): Record<string, string> {
-  const key = CLOUD_KEY.trim()
-  const h: Record<string, string> = { apikey: key, 'Content-Type': 'application/json', ...extra }
-  // Legacy anon keys are JWTs and also go in Authorization; the newer
-  // publishable keys (sb_publishable_…) must only be sent as `apikey`.
-  if (key.startsWith('eyJ')) h.Authorization = `Bearer ${key}`
-  return h
+  return { 'Content-Type': 'application/json', ...authHeader(), ...extra }
 }
 
 export async function request<T>(url: string, init: RequestInit, table = ''): Promise<T> {
@@ -38,6 +42,10 @@ export async function request<T>(url: string, init: RequestInit, table = ''): Pr
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal })
     const text = await res.text()
+    if (res.status === 401) {
+      loginRejected()
+      throw new CloudAuthError()
+    }
     if (!res.ok) {
       let detail = text
       let code = ''

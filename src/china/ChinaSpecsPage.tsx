@@ -4,7 +4,7 @@ import { thumbnailUrl } from '../assets'
 import { UnitCategoryLocKey, UnitCategoryType } from '../data/enums'
 import type { GameDb } from '../data/db'
 import type { CloudCardMeta } from '../cloud/cloudCards'
-import { CloudConflictError, CloudMissingTableError } from '../cloud/rest'
+import { CloudAuthError, CloudConflictError, CloudMissingTableError } from '../cloud/rest'
 import type { SpecInput, SpecRow, SpecUnitRef } from '../cloud/specs'
 import { ensureSpecs, listSpecs, saveSpec } from '../cloud/specs'
 import { cloudEnabled } from '../cloud/config'
@@ -137,6 +137,8 @@ export function ChinaSpecsPage() {
     try {
       setSpecs(await ensureSpecs(await listSpecs()))
     } catch (e) {
+      // a turned-down login brings back the login form instead
+      if (e instanceof CloudAuthError) return
       setPageNotice(
         e instanceof CloudMissingTableError
           ? { kind: 'error', key: 'specsMissing' }
@@ -191,6 +193,8 @@ export function ChinaSpecsPage() {
       })
       setNotices((n) => ({ ...n, [row.id]: { kind: 'ok', key: 'specSaved' } }))
     } catch (e) {
+      // the draft stays; it can be saved again after logging in
+      if (e instanceof CloudAuthError) return
       setNotices((n) => ({
         ...n,
         [row.id]:

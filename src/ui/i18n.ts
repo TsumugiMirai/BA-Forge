@@ -50,6 +50,12 @@ const STRINGS = {
   password: { eng: 'Password', chi: '密码' },
   loginButton: { eng: 'Log in', chi: '登录' },
   loginFailed: { eng: 'Wrong account or password.', chi: '账号或密码不对。' },
+  loginBusy: { eng: 'Too many attempts. Wait a minute and try again.', chi: '尝试次数太多，请等一分钟再试。' },
+  loginError: {
+    eng: 'Could not reach the server. Check the connection and try again.',
+    chi: '连不上服务器，请检查网络后再试。',
+  },
+  loginExpired: { eng: 'Your login has expired. Please log in again.', chi: '登录已过期，请重新登录。' },
   logout: { eng: 'Log out', chi: '退出登录' },
 
   // China specialization setup page
@@ -81,8 +87,8 @@ const STRINGS = {
     chi: '这个专精刚被别人保存过。请点“撤销修改”看最新版本，再重新修改。',
   },
   specsMissing: {
-    eng: 'The specialization table is not set up yet: run docs/specs-setup.sql in the Supabase SQL Editor.',
-    chi: '还没建专精表：请在 Supabase 的 SQL Editor 运行 docs/specs-setup.sql。',
+    eng: 'The server has no specialization table yet (set it up with server/install.sh).',
+    chi: '服务器上还没有专精表（用 server/install.sh 安装）。',
   },
   customUnit: { eng: 'Custom', chi: '自制' },
   deletedCard: { eng: '(deleted card)', chi: '（卡片已删除）' },
@@ -95,8 +101,8 @@ const STRINGS = {
   // Shared online library
   cloudTitle: { eng: 'Online library', chi: '在线卡库' },
   cloudHint: {
-    eng: 'Shared with everyone who opens this page; no login.',
-    chi: '打开这个网页的人都能看到和修改，无需登录。',
+    eng: 'Shared with everyone who logs in.',
+    chi: '登录的人都能看到和修改。',
   },
   cloudAuthor: { eng: 'Your name (optional)', chi: '你的名字（可选）' },
   cloudSave: { eng: 'Upload current card', chi: '上传当前卡片' },

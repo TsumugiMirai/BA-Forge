@@ -1,22 +1,31 @@
 import { useState } from 'react'
+import type { LoginResult } from '../auth/auth'
 import { useAppStore } from '../state/store'
+import type { UiStringKey } from './i18n'
 import { t } from './i18n'
+
+const FAILURE_TEXT: Record<Exclude<LoginResult, 'ok'>, UiStringKey> = {
+  wrong: 'loginFailed',
+  busy: 'loginBusy',
+  error: 'loginError',
+}
 
 /** The page login shown in place of the online features until it passes. */
 export function LoginForm({ compact = false }: { compact?: boolean }) {
   const lang = useAppStore((s) => s.lang)
   const login = useAppStore((s) => s.login)
+  const expired = useAppStore((s) => s.loginExpired)
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<UiStringKey | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function submit() {
     setBusy(true)
-    const ok = await login(account, password)
+    const result = await login(account, password)
     setBusy(false)
-    setFailed(!ok)
-    if (ok) setPassword('')
+    setFailure(result === 'ok' ? null : FAILURE_TEXT[result])
+    if (result === 'ok') setPassword('')
   }
 
   return (
@@ -29,6 +38,7 @@ export function LoginForm({ compact = false }: { compact?: boolean }) {
     >
       {!compact && <h3>{t(lang, 'loginTitle')}</h3>}
       <div className="saved-hint">{t(lang, 'loginHint')}</div>
+      {expired && !failure && <div className="saved-error">{t(lang, 'loginExpired')}</div>}
       <input
         className="cloud-input"
         placeholder={t(lang, 'account')}
@@ -44,7 +54,7 @@ export function LoginForm({ compact = false }: { compact?: boolean }) {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
-      {failed && <div className="saved-error">{t(lang, 'loginFailed')}</div>}
+      {failure && <div className="saved-error">{t(lang, failure)}</div>}
       <button className="saved-import cloud-primary" type="submit" disabled={busy || !account}>
         {t(lang, 'loginButton')}
       </button>

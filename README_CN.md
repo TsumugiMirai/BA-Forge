@@ -55,18 +55,17 @@ node scripts/extract-assets.mjs <ExportedProject 路径>
 
 ## 在线卡库（可选）
 
-右侧“在线卡库”让打开网页的人共用一份卡片库：上传、打开、修改后保存、另存、删除，无需登录。
-它存在一个 Supabase 免费项目里：在项目的 SQL Editor 运行 `docs/cloud-setup.sql`，
-再把 Project URL 和 anon（publishable）key 填进 `src/cloud/config.ts`（两者本来就是给网页公开用的，
-不要填 service_role / secret key）。不填则不显示在线卡库。两人同时修改同一张卡时，后保存的一方会收到提示，不会互相覆盖；
-导入的大图片上传前会转成 WebP 以减小体积。
+右侧“在线卡库”让登录的人共用一份卡片库：上传、打开、修改后保存、另存、删除。
+两人同时修改同一张卡时，后保存的一方会收到提示，不会互相覆盖；导入的大图片上传前会转成 WebP 以减小体积。
 
-在线功能需要先登录（`src/auth/auth.ts` 里一个共用账号，只比对账号密码的哈希）。这只是挡住随手点进来的人：
-数据库钥匙就在网页里，懂行的人能绕过。
+数据放在项目自己的服务器上：PostgreSQL + PostgREST，经 nginx 提供在
+`https://110.42.238.185/ba-recard/api`（地址写在 `src/cloud/config.ts`）。在线功能要先用共用账号登录，
+密码由服务器检查，服务器只把数据交给带着它发的登录凭证的请求。安装、改密码、备份见
+[`server/README.md`](server/README.md)。
 
 “中国专精”页（网址末尾加 `#china`）是开发用的设置页：六个预设专精，在线修改名称、图标、介绍，
 并把在线卡库的自制单位或游戏单位分配进去，每个专精单独保存，同样防止互相覆盖。
-它用 Supabase 的 `specs` 表，建表 SQL 在 `docs/specs-setup.sql`。
+它用同一台服务器上的 `specs` 表（`server/schema.sql`）。
 
 ## 工作原理
 

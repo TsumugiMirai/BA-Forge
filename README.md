@@ -58,12 +58,14 @@ to check DLC3 cards, default loadouts and PNG export in a browser.
 ### Online library (optional)
 
 The right sidebar's online library is a card library shared by everyone who
-opens the page: upload, open, change and save, save as new, delete, no login.
-It lives in a free Supabase project: run `docs/cloud-setup.sql` in its SQL
-Editor, then put the project URL and anon (publishable) key in
-`src/cloud/config.ts` (both are public client values; never a service_role /
-secret key). Without them the panel is hidden. A version check stops two people
-from silently overwriting each other's edits, and large imported images are
+logs in with the page's shared account: upload, open, change and save, save as
+new, delete. The China specialization page (`#china`) keeps its six
+specializations on the same server. Both live on the project's own server:
+PostgreSQL + PostgREST behind nginx at `https://110.42.238.185/ba-recard/api`
+(set in `src/cloud/config.ts`); the server checks the login and hands out data
+only with the token it issued. Setup, password changes and backups:
+[`server/README.md`](server/README.md). A version check stops two people from
+silently overwriting each other's edits, and large imported images are
 re-encoded as WebP before upload.
 
 ## How it works

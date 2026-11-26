@@ -1,0 +1,22 @@
+# PostgREST settings for the BA-ReCard API. install.sh fills in the two
+# {{...}} secrets and writes the result to /etc/ba-recard/postgrest.conf
+# (root:ba-recard, mode 0640). Never commit the filled-in file.
+
+db-uri = "postgres://ba_recard_authenticator:{{AUTH_PASSWORD}}@127.0.0.1:5432/ba_recard"
+db-schemas = "api"
+db-anon-role = "ba_recard_anon"
+db-pool = 4
+db-max-rows = 5000
+
+# same value as private.settings.jwt_secret in the database
+jwt-secret = "{{JWT_SECRET}}"
+
+# only nginx talks to it (location /ba-recard/api/)
+server-host = "127.0.0.1"
+server-port = 3020
+
+# the GitHub Pages site and the local dev server (Launch BA-ReCard.bat)
+server-cors-allowed-origins = "https://tsumugimirai.github.io, http://localhost:5173, http://127.0.0.1:5173"
+
+openapi-mode = "disabled"
+log-level = "error"

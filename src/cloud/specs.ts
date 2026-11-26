@@ -1,7 +1,7 @@
 // Client for the China specialization setup: the `specs` table (six rows,
-// ids 1–6) of the same Supabase project. Each row holds a specialization's
-// name, icon (image data URL), description and assigned units. Schema and
-// seed rows: docs/specs-setup.sql.
+// ids 1–6) on the same server as the card library. Each row holds a
+// specialization's name, icon (image data URL), description and assigned
+// units. Schema: server/schema.sql; missing rows are created by ensureSpecs.
 
 import { CloudConflictError, endpoint, headers, request } from './rest'
 

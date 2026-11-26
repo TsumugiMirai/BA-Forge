@@ -1,0 +1,7 @@
+[Unit]
+Description=Back up the BA-ReCard database
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ba-recard-backup
