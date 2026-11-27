@@ -118,6 +118,10 @@ export interface WeaponModel {
   /** "7.5/min" practical rate of fire the compact card shows for main guns
    *  (UnitWeaponCompactInfo); absent for other weapons and older saved cards */
   rateOfFire?: string
+  /** index of the custom modification slot (CardModel.mods) whose chosen
+   *  option carries this weapon; absent = the unit's own weapon, shown
+   *  whatever is chosen */
+  modSlot?: number
 }
 
 /** an option of a custom modification slot (card maker's 改装件) */
@@ -127,6 +131,13 @@ export interface CardModOption {
   icon: string | null
   /** points the option adds to (or takes off) the unit's cost */
   cost: number
+  /** the weapons this option puts on the card while another option of its
+   *  slot is chosen (the chosen option's weapons live in CardModel.weapons,
+   *  tagged with `modSlot`); absent = none */
+  weapons?: WeaponModel[]
+  /** color overrides of those weapons, keyed like textColors but relative to
+   *  the list ("0.name", "1.ammo.0.range") */
+  weaponColors?: Record<string, string>
 }
 
 /** a modification slot of a custom card, like the game's armor/weapon slots */
@@ -339,6 +350,73 @@ export function moveIndexed<T>(card: CardModel, list: T[], prefix: string, from:
     next[m ? prefix + movedIndex(Number(m[1]), from, to) + m[2] : key] = value
   }
   card.textColors = next
+}
+
+/**
+ * Choose option `to` of the card's custom slot `slot`, swapping the weapons
+ * the slot carries: the weapons tagged with the slot (the old option's) are
+ * stored on the old option, color overrides included, and the new option's
+ * stored weapons take their place in the list (at the end when the old option
+ * had none). Cost is not touched here.
+ */
+export function switchModOption(card: CardModel, slot: number, to: number) {
+  const s = card.mods?.[slot]
+  const next = s?.options[to]
+  if (!s || !next || s.current === to) return
+  const old = s.options[s.current]
+  const taken: number[] = []
+  card.weapons.forEach((w, i) => w.modSlot === slot && taken.push(i))
+  const at = taken[0] ?? card.weapons.length
+
+  if (old) {
+    old.weapons = taken.map((i) => {
+      const w = { ...card.weapons[i]! }
+      delete w.modSlot
+      return w
+    })
+    const colors: Record<string, string> = {}
+    for (const [key, value] of Object.entries(card.textColors ?? {})) {
+      const m = /^weapon\.(\d+)\.(.+)$/.exec(key)
+      const k = m ? taken.indexOf(Number(m[1])) : -1
+      if (k >= 0) colors[`${k}.${m![2]}`] = value
+    }
+    old.weaponColors = colors
+    if (old.weapons.length === 0) delete old.weapons
+    if (Object.keys(colors).length === 0) delete old.weaponColors
+  }
+  for (const i of [...taken].reverse()) {
+    card.weapons.splice(i, 1)
+    removeIndexedColors(card, 'weapon.', i)
+  }
+
+  const incoming = (next.weapons ?? []).map((w) => ({ ...w, modSlot: slot }))
+  if (incoming.length > 0) {
+    // shift the colors of the weapons after the insertion point
+    const shifted: Record<string, string> = {}
+    for (const [key, value] of Object.entries(card.textColors ?? {})) {
+      const m = /^weapon\.(\d+)(\..+)$/.exec(key)
+      const n = m ? Number(m[1]) : -1
+      shifted[m && n >= at ? `weapon.${n + incoming.length}${m[2]}` : key] = value
+    }
+    for (const [key, value] of Object.entries(next.weaponColors ?? {})) {
+      const m = /^(\d+)\.(.+)$/.exec(key)
+      if (m) shifted[`weapon.${at + Number(m[1])}.${m[2]}`] = value
+    }
+    card.textColors = shifted
+    card.weapons.splice(at, 0, ...incoming)
+  }
+  delete next.weapons
+  delete next.weaponColors
+  s.current = to
+}
+
+/** After removing custom slot `removed`, its weapons become the unit's own
+ *  and later slots' weapon tags move down with their slots. */
+export function untagRemovedModSlot(card: CardModel, removed: number) {
+  for (const w of card.weapons) {
+    if (w.modSlot === removed) delete w.modSlot
+    else if (w.modSlot != null && w.modSlot > removed) w.modSlot--
+  }
 }
 
 export function emptyWeapon(): WeaponModel {
