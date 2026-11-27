@@ -404,8 +404,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const slots = gameModSlots(db, selectedUnitId, selection)
       const slot = slots.findIndex((s) => s.key === String(modificationId))
       const option = slots[slot]?.options.findIndex((o) => o.key === String(optionId)) ?? -1
+      const { dirty, editMode } = get()
       get().updateCard((c) => makeGameSlotsCustom(db, c, selectedUnitId, selection))
       if (slot >= 0 && option >= 0) get().selectCardMod(slot, option)
+      // only a look at the variant outside edit mode (see selectCardMod)
+      if (!editMode) set({ dirty })
       return
     }
     // still the game's card: the variant rebuilds it (asking first when it
@@ -508,6 +511,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectCardMod(slot, option) {
+    // outside edit mode picking an option is only a look at that variant:
+    // closing the card afterwards asks nothing (edits start with "Edit")
+    const { dirty, editMode } = get()
     get().updateCard((c) => {
       const s = c.mods?.[slot]
       const next = s?.options[option]
@@ -518,6 +524,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const m = /-?\d+(?:\.\d+)?/.exec(c.cost)
       if (delta && m) c.cost = c.cost.replace(m[0], String(Math.round((Number(m[0]) + delta) * 100) / 100))
     })
+    if (!editMode) set({ dirty })
   },
 
   setColorTarget(key) {
