@@ -4,7 +4,7 @@ import { loadGameDb } from '../data/db'
 import type { VariantSelection } from '../data/resolve'
 import { fillMissileFlags, resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
-import { normalizeCard } from '../card/model'
+import { emptyCard, normalizeCard } from '../card/model'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
@@ -25,6 +25,7 @@ import {
   updateCloudCard,
 } from '../cloud/cloudCards'
 import { compressCardImages } from '../cloud/compressImages'
+import { exportSavedCardJson } from '../export/exportJson'
 import { CloudAuthError, CloudHttpError, CloudMissingTableError } from '../cloud/rest'
 import type { Account, LoginResult, RegisterInput, RegisterResult } from '../auth/auth'
 import {
@@ -39,7 +40,7 @@ import {
 import type { PasswordChangeResult } from '../cloud/account'
 import { changePassword as serverChangePassword, fetchMe, saveDisplayName } from '../cloud/account'
 import type { SpecInput, SpecRow } from '../cloud/specs'
-import { ensureSpecs, listSpecs, setCardSpecs as serverSetCardSpecs } from '../cloud/specs'
+import { listSpecs, setCardSpecs as serverSetCardSpecs } from '../cloud/specs'
 import type { UiStringKey } from '../ui/i18n'
 
 /** result line shown next to the online actions */
@@ -54,14 +55,17 @@ export type Lang = 'eng' | 'chi'
 /** which page is showing: the card maker (unit card, or its kill-log
  *  editor), the card library (#library) or the China specialization setup
  *  (#china) */
-export type View = 'card' | 'log' | 'library' | 'china'
+export type View = 'units' | 'card' | 'log' | 'library' | 'china'
 /** the card maker's two workspaces */
 export type WorkView = 'card' | 'log'
 
-/** the page an address opens (…/BA-Forge/#library), null for the card maker */
+/** the page an address opens: …/BA-Forge/ is the arsenal, #maker the card
+ *  maker (card or kill log), #library, #specs (formerly #china) */
 export function viewFromHash(hash: string): View | null {
-  if (hash === '#china') return 'china'
+  if (hash === '#specs' || hash === '#china') return 'china'
   if (hash === '#library') return 'library'
+  if (hash === '#maker') return 'card'
+  if (hash === '' || hash === '#' || hash === '#units') return 'units'
   return null
 }
 
@@ -152,6 +156,16 @@ interface AppState {
   setStyle(style: CardStyle): void
   setEditMode(on: boolean): void
   setView(view: View): void
+  /** open a game unit (with these modification choices) in the card maker,
+   *  after the unsaved-edits check */
+  openInMaker(unitId: number, selection: VariantSelection): void
+  /** start an empty custom card in the card maker */
+  newBlankCard(): void
+  /** open a card from an exported .json file in the card maker (not linked
+   *  to any online entry; saving uploads it as a new card) */
+  openCardFile(entry: SavedCard): void
+  /** pick an option of a custom modification slot; the cost follows */
+  selectCardMod(slot: number, option: number): void
   setColorTarget(key: string | null): void
   /** apply a partial or full replacement of the displayed card */
   updateCard(mutate: (card: CardModel) => void): void
@@ -167,8 +181,8 @@ interface AppState {
   resetEdits(): void
   /** snapshot the displayed card into the saved list (overwrites same name) */
   saveCard(): void
-  /** save the displayed card where it came from: its online entry when it
-   *  has one (and someone is logged in), else this browser; true on success */
+  /** save the displayed card to the online library (its own entry, or a new
+   *  one); true on success, false without a login */
   saveCurrent(): Promise<boolean>
   /** add an entry parsed from an exported .json file (overwrites same name) */
   importSavedCard(entry: SavedCard): void
@@ -176,6 +190,10 @@ interface AppState {
   deleteSavedCard(id: string): void
   /** upload a card saved in this browser to the online library as a new card */
   uploadSavedCard(id: string): Promise<void>
+  /** upload a card from an exported .json file as a new online card */
+  uploadCardFile(entry: SavedCard): Promise<void>
+  /** download an online card as a .json file */
+  exportCloudCard(id: string): Promise<void>
   /** run `action` now, or park it behind the unsaved-edits confirm dialog */
   guardEdits(action: () => void): void
   confirmPending(): void
@@ -205,8 +223,14 @@ interface AppState {
 
   /** fetch the specializations (creating missing preset rows) */
   refreshSpecs(): Promise<void>
-  /** take a specialization row the China page just saved */
+  /** take a specialization row the specializations page just saved (or
+   *  added) */
   replaceSpec(row: SpecRow): void
+  /** forget a deleted specialization */
+  dropSpec(id: number): void
+  /** the specialization the specializations page shows */
+  specSelected: number | null
+  selectSpec(id: number | null): void
   /** put an online card into exactly these specializations; true on success */
   setCardSpecs(cardId: string, specIds: number[]): Promise<boolean>
   togglePendingSpec(specId: number): void
@@ -284,7 +308,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   editMode: false,
   // …/#library and …/#china open straight on those pages
-  view: (typeof location !== 'undefined' && viewFromHash(location.hash)) || 'card',
+  view: (typeof location !== 'undefined' && viewFromHash(location.hash)) || 'units',
   workView: 'card',
   log: emptyLog(),
   card: null,
@@ -311,6 +335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   specBusy: false,
   chinaOpen: {},
   chinaDrafts: {},
+  specSelected: null,
   returnView: null,
 
   async load() {
@@ -403,6 +428,73 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
   },
 
+  openInMaker(unitId, selection) {
+    get().guardEdits(() => {
+      const { db } = get()
+      if (!db || !db.units.has(unitId)) return
+      set({
+        selectedUnitId: unitId,
+        selection,
+        card: resolve(db, unitId, selection),
+        dirty: false,
+        colorTarget: null,
+        cloudLinked: null,
+        pendingSpecIds: [],
+        cloudNotice: null,
+        returnView: 'units',
+      })
+      get().setView('card')
+    })
+  },
+
+  newBlankCard() {
+    get().guardEdits(() => {
+      set({
+        selectedUnitId: null,
+        selection: {},
+        card: emptyCard(),
+        dirty: false,
+        colorTarget: null,
+        cloudLinked: null,
+        pendingSpecIds: [],
+        cloudNotice: null,
+        editMode: true,
+      })
+      get().setView('card')
+    })
+  },
+
+  openCardFile(entry) {
+    get().guardEdits(() => {
+      set({
+        selectedUnitId: entry.card.unitId,
+        selection: entry.selection ?? {},
+        compact: entry.compact,
+        style: entry.style ?? get().style,
+        card: upgradeCard(get().db, entry.card),
+        dirty: true,
+        colorTarget: null,
+        cloudLinked: null,
+        pendingSpecIds: [],
+        cloudNotice: null,
+      })
+      get().setView('card')
+    })
+  },
+
+  selectCardMod(slot, option) {
+    get().updateCard((c) => {
+      const s = c.mods?.[slot]
+      const next = s?.options[option]
+      if (!s || !next) return
+      const before = s.options[s.current]?.cost ?? 0
+      s.current = option
+      const delta = next.cost - before
+      const m = /-?\d+(?:\.\d+)?/.exec(c.cost)
+      if (delta && m) c.cost = c.cost.replace(m[0], String(Math.round((Number(m[0]) + delta) * 100) / 100))
+    })
+  },
+
   setColorTarget(key) {
     set({ colorTarget: key })
   },
@@ -465,10 +557,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async saveCurrent() {
-    const { cloudLinked, authed } = get()
-    if (cloudLinked && authed) return get().saveCloudCard(false)
-    get().saveCard()
-    return !get().saveError
+    // cards live in the online library; without a login there is nowhere
+    // to save (the dialog offers a JSON export instead)
+    if (!get().authed) return false
+    return get().saveCloudCard(false)
   },
 
   importSavedCard(entry) {
@@ -518,6 +610,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ cloudNotice: cloudFailure(e) })
     } finally {
       set({ cloudBusy: false })
+    }
+  },
+
+  async uploadCardFile(entry) {
+    set({ cloudBusy: true, cloudNotice: null })
+    try {
+      const row = await createCloudCard({ name: entry.name, unit_id: entry.card.unitId, data: await cardPayload(entry) })
+      set((s) => ({
+        cloudNotice: { kind: 'ok', key: 'cloudCreated' },
+        cloudCards: [{ ...metaOf(row), cost: entry.card.cost, icon: entry.card.icon ?? null, category: entry.card.category ?? null }, ...s.cloudCards],
+      }))
+    } catch (e) {
+      set({ cloudNotice: cloudFailure(e) })
+    } finally {
+      set({ cloudBusy: false })
+    }
+  },
+
+  async exportCloudCard(id) {
+    set({ cloudNotice: null })
+    try {
+      const row = await getCloudCard(id)
+      const entry = row ? parseSavedCardFile(JSON.stringify(row.data)) : null
+      if (!entry) {
+        set({ cloudNotice: { kind: 'error', key: 'cloudMissing' } })
+        return
+      }
+      exportSavedCardJson(entry)
+    } catch (e) {
+      set({ cloudNotice: cloudFailure(e) })
     }
   },
 
@@ -658,10 +780,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         pendingSpecIds: [],
       })
       // keep the list entry current (someone may have saved it meanwhile)
+      const meta = { ...metaOf(row), cost: entry.card.cost, icon: entry.card.icon ?? null, category: entry.card.category ?? null }
       set((s) => ({
         cloudCards: s.cloudCards.some((c) => c.id === row.id)
-          ? s.cloudCards.map((c) => (c.id === row.id ? { ...c, ...metaOf(row) } : c))
-          : [metaOf(row), ...s.cloudCards],
+          ? s.cloudCards.map((c) => (c.id === row.id ? { ...c, ...meta } : c))
+          : [meta, ...s.cloudCards],
       }))
       return true
     } catch (e) {
@@ -690,7 +813,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         cloudLinked: { id: row.id, version: row.version },
         dirty: false,
         cloudNotice: { kind: 'ok', key: updating ? 'cloudUpdated' : 'cloudCreated' },
-        cloudCards: [metaOf(row), ...s.cloudCards.filter((c) => c.id !== row.id)],
+        cloudCards: [
+          { ...metaOf(row), cost: card.cost, icon: card.icon ?? null, category: card.category ?? null },
+          ...s.cloudCards.filter((c) => c.id !== row.id),
+        ],
         pendingSpecIds: [],
       }))
       // a card uploaded for the first time joins the specializations picked for it
@@ -728,7 +854,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!get().authed) return
     set({ specsLoading: true })
     try {
-      set({ specs: await ensureSpecs(await listSpecs()), specsNotice: null })
+      set({ specs: await listSpecs(), specsNotice: null })
     } catch (e) {
       if (e instanceof CloudAuthError) return
       set({
@@ -743,7 +869,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   replaceSpec(row) {
-    set((s) => ({ specs: s.specs?.map((r) => (r.id === row.id ? row : r)) ?? [row] }))
+    set((s) => ({
+      specs: s.specs?.some((r) => r.id === row.id)
+        ? s.specs.map((r) => (r.id === row.id ? row : r))
+        : [...(s.specs ?? []), row],
+    }))
+  },
+
+  dropSpec(id) {
+    set((s) => {
+      const { [id]: _, ...drafts } = s.chinaDrafts
+      return {
+        specs: s.specs?.filter((r) => r.id !== id) ?? null,
+        chinaDrafts: drafts,
+        specSelected: s.specSelected === id ? null : s.specSelected,
+      }
+    })
+  },
+
+  selectSpec(id) {
+    set({ specSelected: id })
   },
 
   async setCardSpecs(cardId, specIds) {
@@ -794,6 +939,9 @@ function metaOf(row: CloudCardMeta): CloudCardMeta {
     version: row.version,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    cost: row.cost,
+    icon: row.icon,
+    category: row.category,
   }
 }
 

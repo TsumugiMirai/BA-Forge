@@ -615,10 +615,14 @@ span.hero-portrait { position: absolute; inset: 0; }
 .compact-weapon-distance {
   position: absolute;
   right: 2px;
-  bottom: 4px;
+  bottom: 0;
   z-index: 2;
+  line-height: 12px;
   background: var(--c-yellow);
 }
+/* the game's silhouette box is 124x48 with the missile centered in it, so the
+   pill in the bottom corner sits below the missile, not on it */
+.compact-weapon-left.has-distance .compact-weapon-icon { height: 46px; }
 
 /* new style: weapon trait icons (Suppressed/CQC/static/autoload) overlaid on
    the bottom-left of the compact silhouette, as in game */

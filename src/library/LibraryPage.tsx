@@ -5,6 +5,7 @@ import { thumbnailUrl } from '../assets'
 import type { GameDb } from '../data/db'
 import { UnitCategoryLocKey, UnitCategoryType } from '../data/enums'
 import type { CloudCardMeta } from '../cloud/cloudCards'
+import { cardCategory } from '../cloud/cloudCards'
 import { cloudEnabled } from '../cloud/config'
 import type { SpecRow } from '../cloud/specs'
 import { specsByCard } from '../cloud/specs'
@@ -24,14 +25,13 @@ type Sort = 'game' | 'updated'
 
 const TAB_KEY = 'ba-recard.libraryTab'
 
-function initialTab(authed: boolean): Tab {
+function initialTab(): Tab {
   try {
-    const saved = localStorage.getItem(TAB_KEY)
-    if (saved === 'online' || saved === 'local') return saved
+    if (localStorage.getItem(TAB_KEY) === 'local') return 'local'
   } catch {
     // fall through
   }
-  return authed ? 'online' : 'local'
+  return 'online'
 }
 
 /** the game unit a card is built on: its name, category and arsenal picture */
@@ -61,12 +61,13 @@ function arrange<T>(
   db: GameDb,
   items: T[],
   sort: Sort,
-  key: (item: T) => { unitId: number | null; name: string; time: number },
+  key: (item: T) => { unitId: number | null; name: string; time: number; category?: number | null },
 ): Group<T>[] {
   if (sort === 'updated') return [{ category: null, items: [...items].sort((a, b) => key(b).time - key(a).time) }]
   const groups = new Map<number, T[]>()
   for (const item of items) {
-    const cat = unitInfo(db, key(item).unitId).category
+    const k0 = key(item)
+    const cat = k0.category ?? unitInfo(db, k0.unitId).category
     const k = CATEGORY_ORDER.includes(cat) ? cat : OTHER
     const list = groups.get(k)
     if (list) list.push(item)
@@ -102,7 +103,7 @@ export function LibraryPage() {
   const authed = useAppStore((s) => s.authed)
   const cloudCards = useAppStore((s) => s.cloudCards)
   const savedCards = useAppStore((s) => s.savedCards)
-  const [tab, setTabState] = useState<Tab>(() => initialTab(authed))
+  const [tab, setTabState] = useState<Tab>(() => initialTab())
   const setTab = (next: Tab) => {
     setTabState(next)
     try {
@@ -111,14 +112,16 @@ export function LibraryPage() {
       // not remembered
     }
   }
-  const online = cloudEnabled()
-  const shownTab = online ? tab : 'local'
+  // cards are kept online now; cards an older version saved in this browser
+  // stay reachable (to upload or export) until they are all gone
+  const hasLocal = savedCards.length > 0
+  const shownTab = hasLocal && (tab === 'local' || !cloudEnabled()) ? 'local' : 'online'
 
   return (
     <div className="library-page">
-      <div className="library-head">
-        <div className="library-tabs" role="tablist">
-          {online && (
+      {hasLocal && (
+        <div className="library-head">
+          <div className="library-tabs" role="tablist">
             <button
               role="tab"
               aria-selected={shownTab === 'online'}
@@ -128,18 +131,18 @@ export function LibraryPage() {
               {t(lang, 'cloudTitle')}
               {authed && <span className="library-tab-count">{cloudCards.length}</span>}
             </button>
-          )}
-          <button
-            role="tab"
-            aria-selected={shownTab === 'local'}
-            className={shownTab === 'local' ? 'active' : ''}
-            onClick={() => setTab('local')}
-          >
-            {t(lang, 'libraryLocal')}
-            <span className="library-tab-count">{savedCards.length}</span>
-          </button>
+            <button
+              role="tab"
+              aria-selected={shownTab === 'local'}
+              className={shownTab === 'local' ? 'active' : ''}
+              onClick={() => setTab('local')}
+            >
+              {t(lang, 'libraryLocal')}
+              <span className="library-tab-count">{savedCards.length}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       {shownTab === 'online' ? (
         authed ? (
           <OnlineLibrary />
@@ -185,6 +188,9 @@ function OnlineLibrary() {
   const [specFilter, setSpecFilter] = useState<SpecFilter>('all')
   const [mine, setMine] = useState(false)
   const [sort, setSort] = useState<Sort>('game')
+  const uploadCardFile = useAppStore((s) => s.uploadCardFile)
+  const exportCloudCard = useAppStore((s) => s.exportCloudCard)
+  const importInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void refreshCloud()
@@ -228,7 +234,12 @@ function OnlineLibrary() {
   const groups = useMemo(
     () =>
       db
-        ? arrange(db, shown, sort, (c) => ({ unitId: c.unit_id, name: c.name, time: Date.parse(c.updated_at) }))
+        ? arrange(db, shown, sort, (c) => ({
+            unitId: c.unit_id,
+            name: c.name,
+            time: Date.parse(c.updated_at),
+            category: cardCategory(c, c.unit_id != null ? db.units.get(c.unit_id)?.CategoryType : undefined),
+          }))
         : [],
     [db, shown, sort],
   )
@@ -260,6 +271,25 @@ function OnlineLibrary() {
         <span className="library-count">
           {shown.length} {t(lang, 'cardsUnit')}
         </span>
+        <button className="library-button" disabled={cloudBusy} onClick={() => importInput.current?.click()}>
+          {t(lang, 'importJson')}
+        </button>
+        <input
+          ref={importInput}
+          type="file"
+          accept="application/json,.json"
+          multiple
+          hidden
+          onChange={async (e) => {
+            const files = [...(e.target.files ?? [])]
+            e.target.value = ''
+            for (const f of files) {
+              const entry = parseSavedCardFile(await f.text())
+              if (entry) await uploadCardFile(entry)
+              else window.alert(`${t(lang, 'importFailed')}\n${f.name}`)
+            }
+          }}
+        />
         <button
           className="library-button"
           disabled={cloudListing}
@@ -319,6 +349,7 @@ function OnlineLibrary() {
                 busy={cloudBusy}
                 canDelete={canDelete(c)}
                 onOpen={() => open(c.id)}
+                onExport={() => void exportCloudCard(c.id)}
                 onDelete={() => {
                   if (window.confirm(`${t(lang, 'cloudDeleteConfirm')}\n${c.name}`)) void removeCloudCard(c.id)
                 }}
@@ -370,6 +401,7 @@ function OnlineTile(props: {
   busy: boolean
   canDelete: boolean
   onOpen(): void
+  onExport(): void
   onDelete(): void
 }) {
   const { card: c, db, specs, specIds } = props
@@ -378,7 +410,7 @@ function OnlineTile(props: {
   const setCardSpecs = useAppStore((s) => s.setCardSpecs)
   const [picking, setPicking] = useState(false)
   const pickRef = useRef<HTMLDivElement>(null)
-  const { thumb } = unitInfo(db, c.unit_id)
+  const thumb = c.icon || unitInfo(db, c.unit_id).thumb
   const mySpecs = (specs ?? []).filter((s) => specIds.includes(s.id))
 
   useEffect(() => {
@@ -418,6 +450,9 @@ function OnlineTile(props: {
               {t(lang, 'assignSpecs')}
             </button>
           )}
+          <button className="library-icon-button" title={t(lang, 'exportJson')} onClick={props.onExport}>
+            ⤓
+          </button>
           {props.canDelete && (
             <button className="library-icon-button danger" title={t(lang, 'delete')} disabled={props.busy} onClick={props.onDelete}>
               ×
@@ -450,11 +485,9 @@ function LocalLibrary() {
   const cloudBusy = useAppStore((s) => s.cloudBusy)
   const loadSavedCard = useAppStore((s) => s.loadSavedCard)
   const deleteSavedCard = useAppStore((s) => s.deleteSavedCard)
-  const importSavedCard = useAppStore((s) => s.importSavedCard)
   const uploadSavedCard = useAppStore((s) => s.uploadSavedCard)
   const guardEdits = useAppStore((s) => s.guardEdits)
   const setView = useAppStore((s) => s.setView)
-  const fileInput = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('game')
 
@@ -470,11 +503,6 @@ function LocalLibrary() {
 
   if (!db) return null
 
-  async function onImportFile(file: File) {
-    const entry = parseSavedCardFile(await file.text())
-    if (entry) importSavedCard(entry)
-    else window.alert(t(lang, 'importFailed'))
-  }
   const open = (s: SavedCard) =>
     guardEdits(() => {
       loadSavedCard(s.id)
@@ -495,20 +523,17 @@ function LocalLibrary() {
         <span className="library-count">
           {shown.length} {t(lang, 'cardsUnit')}
         </span>
-        <button className="library-button" onClick={() => fileInput.current?.click()}>
-          {t(lang, 'importJson')}
-        </button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void onImportFile(file)
-            e.target.value = ''
-          }}
-        />
+        {authed && (
+          <button
+            className="library-button"
+            disabled={cloudBusy}
+            onClick={async () => {
+              for (const c of savedCards) await uploadSavedCard(c.id)
+            }}
+          >
+            {t(lang, 'uploadAll')}
+          </button>
+        )}
       </div>
       {saveError && <div className="saved-error">{t(lang, 'saveFailed')}</div>}
       <Notice />

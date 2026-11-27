@@ -1,7 +1,8 @@
-// Client for the China specialization setup: the `specs` table (six rows,
-// ids 1–6) on the same server as the card library. Each row holds a
-// specialization's name, icon (image data URL), description and assigned
-// units. Schema: server/schema.sql; missing rows are created by ensureSpecs.
+// Client for the custom specializations: the `specs` table on the same
+// server as the card library (ids 1–6 are the China Mod's; new ones get the
+// next id). Each row holds a specialization's name, nation/side, icon (image
+// data URL), description, points per category and assigned units. Schema:
+// server/schema.sql.
 
 import { CloudConflictError, endpoint, headers, request, rpc } from './rest'
 
@@ -24,39 +25,41 @@ export interface SpecRow {
   updated_at: string
   /** display name of whoever saved it last (set by the server) */
   editor?: string
+  /** nation or side, e.g. "中国"; specializations are listed by it */
+  faction?: string
+  /** place in the list (smaller first, then by id) */
+  sort?: number
+  /** account that added it (set by the server; null for the first six) */
+  created_by?: string | null
 }
 
 export type SpecPoints = Record<string, number>
 
-export type SpecInput = Pick<SpecRow, 'name' | 'icon' | 'description' | 'units'> & { points: SpecPoints }
+export type SpecInput = Pick<SpecRow, 'name' | 'icon' | 'description' | 'units'> & {
+  points: SpecPoints
+  faction: string
+}
 
 const TABLE = 'specs'
 
-export const SPEC_COUNT = 6
-
-/** names of the six preset specializations (the first two are the China
- *  Mod's existing ones) */
-export const DEFAULT_SPEC_NAMES = ['重型合成旅', '空降军', '专精三', '专精四', '专精五', '专精六']
-
 export function listSpecs(): Promise<SpecRow[]> {
-  return request<SpecRow[]>(endpoint(TABLE, '?select=*&order=id.asc'), { headers: headers() }, TABLE)
+  return request<SpecRow[]>(endpoint(TABLE, '?select=*&order=sort.asc,id.asc'), { headers: headers() }, TABLE)
 }
 
-/** Create whichever of the six preset rows are missing (never overwrites). */
-export async function ensureSpecs(existing: SpecRow[]): Promise<SpecRow[]> {
-  const have = new Set(existing.map((r) => r.id))
-  const missing = DEFAULT_SPEC_NAMES.map((name, i) => ({ id: i + 1, name })).filter((r) => !have.has(r.id))
-  if (missing.length === 0) return existing
-  await request<unknown>(
-    endpoint(TABLE, '?on_conflict=id'),
-    {
-      method: 'POST',
-      headers: headers({ Prefer: 'resolution=ignore-duplicates,return=minimal' }),
-      body: JSON.stringify(missing),
-    },
+/** Add a specialization; the server picks its id. */
+export async function createSpec(input: SpecInput): Promise<SpecRow> {
+  const rows = await request<SpecRow[]>(
+    endpoint(TABLE, ''),
+    { method: 'POST', headers: headers({ Prefer: 'return=representation' }), body: JSON.stringify(input) },
     TABLE,
   )
-  return listSpecs()
+  if (!rows[0]) throw new Error('empty response')
+  return rows[0]
+}
+
+/** Delete a specialization (its creator or an admin only: 403 "not_owner"). */
+export async function deleteSpec(id: number): Promise<void> {
+  await request<null>(endpoint(TABLE, `?id=eq.${id}`), { method: 'DELETE', headers: headers() }, TABLE)
 }
 
 /** Save a specialization only if nobody saved it since `version` was loaded. */

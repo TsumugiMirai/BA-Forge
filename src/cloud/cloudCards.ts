@@ -4,7 +4,7 @@
 // last saved a card is filled in by the server from the login. Schema:
 // server/schema.sql.
 
-import { CloudConflictError, endpoint, headers, request } from './rest'
+import { CloudConflictError, CloudHttpError, endpoint, headers, request } from './rest'
 
 export { CloudConflictError } from './rest'
 
@@ -24,6 +24,12 @@ export interface CloudCardMeta {
   version: number
   created_at: string
   updated_at: string
+  /** the card's cost and custom arsenal icon, read out of `data` for lists
+   *  (absent when the server could not provide them) */
+  cost?: string | null
+  icon?: string | null
+  /** the card's own arsenal category (JSON text of a number) */
+  category?: string | number | null
 }
 
 export interface CloudCardRow extends CloudCardMeta {
@@ -38,14 +44,20 @@ export interface CloudCardInput {
 }
 
 const TABLE = 'cards'
-const META_COLUMNS = 'id,name,author,editor,created_by,updated_by,unit_id,version,created_at,updated_at'
+const BASE_COLUMNS = 'id,name,author,editor,created_by,updated_by,unit_id,version,created_at,updated_at'
+/** plus the card's cost and custom icon from inside the card JSON */
+const META_COLUMNS = `${BASE_COLUMNS},cost:data->card->>cost,icon:data->card->>icon,category:data->card->>category`
 
-export function listCloudCards(): Promise<CloudCardMeta[]> {
-  return request<CloudCardMeta[]>(
-    endpoint(TABLE, `?select=${META_COLUMNS}&order=updated_at.desc&limit=2000`),
-    { headers: headers() },
-    TABLE,
-  )
+export async function listCloudCards(): Promise<CloudCardMeta[]> {
+  const list = (columns: string) =>
+    request<CloudCardMeta[]>(endpoint(TABLE, `?select=${columns}&order=updated_at.desc&limit=2000`), { headers: headers() }, TABLE)
+  try {
+    return await list(META_COLUMNS)
+  } catch (e) {
+    // a server that cannot read inside the JSON still lists the cards
+    if (e instanceof CloudHttpError && e.status === 400) return list(BASE_COLUMNS)
+    throw e
+  }
 }
 
 export async function getCloudCard(id: string): Promise<CloudCardRow | null> {
@@ -59,7 +71,7 @@ export async function getCloudCard(id: string): Promise<CloudCardRow | null> {
 
 export async function createCloudCard(input: CloudCardInput): Promise<CloudCardRow> {
   const rows = await request<CloudCardRow[]>(
-    endpoint(TABLE, `?select=${META_COLUMNS}`),
+    endpoint(TABLE, `?select=${BASE_COLUMNS}`),
     {
       method: 'POST',
       headers: headers({ Prefer: 'return=representation' }),
@@ -78,7 +90,7 @@ export async function updateCloudCard(
   input: CloudCardInput,
 ): Promise<CloudCardMeta> {
   const rows = await request<CloudCardMeta[]>(
-    endpoint(TABLE, `?id=eq.${encodeURIComponent(id)}&version=eq.${version}&select=${META_COLUMNS}`),
+    endpoint(TABLE, `?id=eq.${encodeURIComponent(id)}&version=eq.${version}&select=${BASE_COLUMNS}`),
     {
       method: 'PATCH',
       headers: headers({ Prefer: 'return=representation' }),
@@ -97,4 +109,12 @@ export async function deleteCloudCard(id: string): Promise<void> {
     { method: 'DELETE', headers: headers() },
     TABLE,
   )
+}
+
+/** the arsenal category a library card is listed under: its own, else its
+ *  game unit's; null when neither is known */
+export function cardCategory(meta: Pick<CloudCardMeta, 'category'>, unitCategory: number | undefined): number | null {
+  const own = meta.category == null || meta.category === '' ? NaN : Number(meta.category)
+  if (Number.isInteger(own)) return own
+  return unitCategory ?? null
 }

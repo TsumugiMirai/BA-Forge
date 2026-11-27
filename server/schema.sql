@@ -69,7 +69,7 @@ create table if not exists api.cards (
   updated_at timestamptz not null default now()
 );
 
--- China specialization setup (six rows, ids 1-6)
+-- Custom specializations (the first six rows, ids 1-6, are the China Mod's)
 create table if not exists api.specs (
   id smallint primary key,
   name text not null,
@@ -85,6 +85,25 @@ create table if not exists api.specs (
 -- "6" aircraft), like the game's Specializations.ReconPoints etc.; {} = unset
 -- (added 2026-11-27)
 alter table api.specs add column if not exists points jsonb not null default '{}'::jsonb;
+
+-- Custom specializations of any nation (2026-11-27, second change): anyone
+-- logged in may add one; ids come from a sequence (the six China rows keep
+-- 1-6). faction is the nation or side it belongs to, sort its place in the
+-- list, created_by who added it (only they or an admin may delete it).
+do $$
+begin
+  if not exists (select from information_schema.columns
+                 where table_schema = 'api' and table_name = 'specs' and column_name = 'faction') then
+    alter table api.specs add column faction text not null default '';
+    -- the six existing rows are the China Mod's specializations
+    update api.specs set faction = '中国';
+  end if;
+end $$;
+alter table api.specs add column if not exists sort integer not null default 0;
+alter table api.specs add column if not exists created_by text;
+create sequence if not exists api.specs_id_seq as smallint owned by api.specs.id;
+select setval('api.specs_id_seq', greatest((select max(id) from api.specs), 6));
+alter table api.specs alter column id set default nextval('api.specs_id_seq');
 
 create or replace function private.touch_row() returns trigger
 language plpgsql as $$
@@ -177,9 +196,15 @@ language plpgsql security definer set search_path = '' as $$
 declare
   who text := private.request_user();
 begin
+  if tg_op = 'UPDATE' then
+    new.created_by := old.created_by;
+  end if;
   if who is not null then
     new.editor := private.display_name(who);
     new.updated_by := who;
+    if tg_op = 'INSERT' then
+      new.created_by := who;
+    end if;
   end if;
   return new;
 end $$;
@@ -351,6 +376,11 @@ drop trigger if exists cards_guard_delete on api.cards;
 create trigger cards_guard_delete before delete on api.cards
   for each row execute function private.guard_card_delete();
 
+-- the same for specializations (the six original ones: only an admin)
+drop trigger if exists specs_guard_delete on api.specs;
+create trigger specs_guard_delete before delete on api.specs
+  for each row execute function private.guard_card_delete();
+
 -- the units entry of an online card in api.specs.units
 create or replace function private.is_card_ref(entry jsonb, card text) returns boolean
 language sql immutable set search_path = '' as $$
@@ -507,6 +537,7 @@ grant execute on function api.me(), api.set_display_name(text), api.change_passw
   api.admin_reset_password(text, text), api.admin_set_role(text, text)
   to ba_recard_editor;
 grant select, insert, update, delete on api.cards, api.specs to ba_recard_editor;
+grant usage on sequence api.specs_id_seq to ba_recard_editor;
 
 -- let a running PostgREST pick up the changes
 notify pgrst, 'reload schema';

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useCardEditMode } from './cardContext'
 import { useAppStore } from '../state/store'
 import { useColorOverride } from '../state/colors'
 
@@ -17,7 +18,7 @@ interface Props {
  * spans with a colorKey, recolored via the sidebar ColorPanel.
  */
 export function EditableText({ value, onChange, className, colorKey }: Props) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const color = useColorOverride(colorKey)
   const isColorTarget = useAppStore((s) => colorKey != null && s.colorTarget === colorKey)
   const setColorTarget = useAppStore((s) => s.setColorTarget)

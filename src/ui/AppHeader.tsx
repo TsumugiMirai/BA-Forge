@@ -5,9 +5,10 @@ import { cloudEnabled } from '../cloud/config'
 import type { UiStringKey } from './i18n'
 import { t } from './i18n'
 
-const PAGES: { page: 'card' | 'library' | 'china'; label: UiStringKey; needsLogin: boolean }[] = [
+const PAGES: { page: 'units' | 'card' | 'library' | 'china'; label: UiStringKey; needsLogin: boolean }[] = [
+  { page: 'units', label: 'navUnits', needsLogin: false },
   { page: 'card', label: 'navCards', needsLogin: false },
-  { page: 'library', label: 'navLibrary', needsLogin: false },
+  { page: 'library', label: 'navLibrary', needsLogin: true },
   { page: 'china', label: 'navChina', needsLogin: true },
 ]
 
@@ -22,7 +23,7 @@ function LockIcon() {
   )
 }
 
-/** Top bar: the three pages (card maker, library, China specializations),
+/** Top bar: the four pages (arsenal, card maker, library, specializations),
  *  language, and the account (log in / sign up, or the account menu). */
 export function AppHeader() {
   const lang = useAppStore((s) => s.lang)
