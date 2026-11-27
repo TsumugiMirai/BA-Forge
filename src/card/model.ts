@@ -120,6 +120,24 @@ export interface WeaponModel {
   rateOfFire?: string
 }
 
+/** an option of a custom modification slot (card maker's 改装件) */
+export interface CardModOption {
+  name: string
+  /** sprite name or data URL; null = the slot's icon */
+  icon: string | null
+  /** points the option adds to (or takes off) the unit's cost */
+  cost: number
+}
+
+/** a modification slot of a custom card, like the game's armor/weapon slots */
+export interface CardModSlot {
+  name: string
+  icon: string | null
+  options: CardModOption[]
+  /** index of the chosen option */
+  current: number
+}
+
 export interface CardModel {
   /** source unit id, null for fully custom cards */
   unitId: number | null
@@ -132,6 +150,17 @@ export interface CardModel {
   flagIcon: string | null
   /** sprite key or data-URL (uploaded portrait) */
   portrait: string | null
+  /** uploaded background behind the portrait; when set, a game portrait is
+   *  left out (an uploaded, transparent portrait sits on top of it) */
+  background?: string | null
+  /** the unit's arsenal silhouette (thumbnail file name or data URL); absent =
+   *  the game unit's own */
+  icon?: string | null
+  /** arsenal category (UnitCategoryType id) the card is listed under;
+   *  absent = the game unit's */
+  category?: number
+  /** custom modification slots; absent = the game unit's own (if any) */
+  mods?: CardModSlot[]
   categoryLabel: string
   roleLabel: string
   description: string

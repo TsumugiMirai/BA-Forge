@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useCardEditMode } from '../card/cardContext'
 import { useAppStore } from '../state/store'
 import { useColorOverride } from '../state/colors'
 import './colorableIcon.css'
@@ -23,7 +24,7 @@ interface Props {
  * inside a picker button still open their picker on the same click.
  */
 export function ColorableIcon({ src, colorKey, className, alt, title, tint = null }: Props) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const setColorTarget = useAppStore((s) => s.setColorTarget)
   const isTarget = useAppStore((s) => s.colorTarget === colorKey)
   const override = useColorOverride(colorKey)

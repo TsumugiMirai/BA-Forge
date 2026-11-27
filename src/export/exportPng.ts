@@ -1,4 +1,5 @@
 import { toPng } from 'html-to-image'
+import { safeFileName } from './fileName'
 
 /** Rasterize a DOM node (by id) to a PNG and trigger a download. The node's
  *  `.exporting` class hides edit-mode outlines/chrome (see card.css / log.css). */
@@ -17,7 +18,7 @@ export async function exportNodePng(nodeId: string, fileName: string, fallback: 
   }
   const a = document.createElement('a')
   a.href = dataUrl
-  a.download = `${fileName.replace(/[^\w\-= ]+/g, '').trim() || fallback}.png`
+  a.download = `${safeFileName(fileName).trim() || fallback}.png`
   a.click()
 }
 

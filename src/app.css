@@ -26,7 +26,7 @@ body {
 .page { flex: 1; min-height: 0; }
 .page-card {
   display: grid;
-  grid-template-columns: 300px 1fr 280px;
+  grid-template-columns: minmax(0, 1fr) 300px;
 }
 .page-full { overflow-y: auto; }
 
@@ -312,7 +312,7 @@ body {
   border-bottom: 1px solid #2a323c;
   background: #171c22;
 }
-.toolbar button {
+.toolbar button, .armory-card-bar button {
   background: #10151a;
   border: 1px solid #2a323c;
   color: inherit;
@@ -321,10 +321,16 @@ body {
   cursor: pointer;
   font-family: inherit;
 }
-.toolbar button:hover { border-color: #56637a; }
-.toolbar button.active { color: #e8b23a; border-color: #e8b23a; }
-.toolbar button.primary { background: #e8b23a; border-color: #e8b23a; color: #14181c; font-weight: 600; }
-.toolbar button:disabled { opacity: 0.6; cursor: default; }
+.toolbar button:hover, .armory-card-bar button:hover { border-color: #56637a; }
+.toolbar button.active, .armory-card-bar button.active { color: #e8b23a; border-color: #e8b23a; }
+.toolbar button.primary, .armory-card-bar button.primary { background: #e8b23a; border-color: #e8b23a; color: #14181c; font-weight: 600; }
+.toolbar button:disabled, .armory-card-bar button:disabled { opacity: 0.6; cursor: default; }
+.seg { display: inline-flex; gap: 0; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 3px 0 0 3px; }
+.seg button:last-child { border-radius: 0 3px 3px 0; }
+.seg button + button { margin-left: -1px; }
+.seg button.active { position: relative; z-index: 1; }
 .toolbar-sep { flex: none; width: 1px; height: 20px; background: #2a323c; margin: 0 4px; }
 
 .card-stage {
@@ -339,7 +345,7 @@ body {
 }
 
 /* variant panel */
-.variant-panel { display: flex; flex-direction: column; gap: 8px; }
+.variant-panel { gap: 2px; }
 .variant-panel h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #8b98a5; }
 .variant-row { display: flex; flex-direction: column; gap: 3px; }
 .variant-label { font-size: 11px; color: #8b98a5; }
@@ -392,7 +398,8 @@ body {
   background: #171c22;
   border: 1px solid #2a323c;
   border-radius: 4px;
-  width: 640px;
+  width: 760px;
+  height: 86vh;
   max-width: 92vw;
   max-height: 86vh;
   padding: 14px;
@@ -444,6 +451,20 @@ body {
   object-fit: contain;
 }
 .picker-icon-img.mirror { transform: scaleX(-1); }
+.picker-groups { display: flex; flex-wrap: wrap; gap: 4px; }
+.picker-groups button {
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #aab6c2;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.picker-groups button:hover { border-color: #56637a; color: #fff; }
+.picker-groups button.active { border-color: #e8b23a; color: #e8b23a; }
+.picker-icon-sub { font-size: 10px; color: #6f7c89; line-height: 1.2; text-align: center; }
 .picker-icon-label {
   font-size: 10px;
   line-height: 1.2;
@@ -707,7 +728,7 @@ body {
 .toolbar button.toolbar-back { color: #e8b23a; border-color: #8a6a22; }
 
 /* a unit's card on top of the page it was clicked on (China page) */
-.card-viewer-overlay { align-items: flex-start; padding: 24px 16px; overflow-y: auto; }
+.card-viewer-overlay { padding: 24px 16px; }
 .card-viewer {
   display: flex;
   flex-direction: column;
@@ -716,7 +737,8 @@ body {
   border: 1px solid #2a323c;
   border-radius: 6px;
   padding: 10px;
-  max-width: calc(100vw - 32px);
+  width: min(900px, calc(100vw - 32px));
+  height: calc(100vh - 48px);
 }
 .card-viewer-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .card-viewer-group { display: flex; gap: 4px; }
@@ -756,4 +778,66 @@ body {
 }
 .card-viewer-confirm span { flex: 1; }
 .card-viewer-notice { font-size: 12px; }
-.card-viewer-body { display: flex; justify-content: center; min-height: 120px; }
+.card-viewer-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.card-viewer-card { flex: 1; min-width: 0; }
+.card-viewer-side { flex: none; width: 280px; overflow-y: auto; }
+.card-viewer-side:empty { display: none; }
+@media (max-width: 760px) {
+  .card-viewer-body { flex-direction: column; overflow-y: auto; }
+  .card-viewer-side { width: auto; }
+}
+
+/* a card scaled to its box (ui/ScaledCard) */
+.scaled-card { overflow: auto; }
+.scaled-card-sizer { margin: 0 auto; }
+.scaled-card-inner { width: max-content; transform-origin: top left; }
+
+/* modification slots, as in the game's arsenal (ui/ModificationsPanel) */
+.mods-panel { display: flex; flex-direction: column; gap: 2px; }
+.mods-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c9d3dc;
+  text-align: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #2a323c;
+  margin-bottom: 2px;
+}
+.mods-row, .mods-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-left: 3px solid transparent;
+  color: #e7f8e5;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.mods-row:hover, .mods-option:hover { background: rgba(255, 255, 255, 0.1); }
+.mods-slot.open .mods-row { border-left-color: #e7f8e5; background: rgba(255, 255, 255, 0.12); }
+.mods-row-name { flex: 1; min-width: 0; font-weight: 600; }
+.mods-row-current { color: #aab6c2; font-size: 12px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mods-cost { color: #f4d42a; font-weight: 700; min-width: 34px; text-align: right; }
+.mods-options { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 6px 14px; }
+.mods-option { background: rgba(255, 255, 255, 0.03); }
+.mods-option.active { border-left-color: #f4d42a; background: rgba(244, 212, 42, 0.08); }
+.mods-option-name { flex: 1; min-width: 0; }
+.mods-icon { flex: none; width: 22px; height: 22px; object-fit: contain; opacity: 0.9; }
+.mods-icon.wide { width: 56px; transform: scaleX(-1); }
+
+.card-category { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8b98a5; }
+.card-category select {
+  flex: 1;
+  background: #10151a;
+  border: 1px solid #2a323c;
+  color: #d7dee6;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 6px;
+  border-radius: 3px;
+}

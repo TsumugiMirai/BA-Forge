@@ -3,10 +3,12 @@ import type { View } from '../state/store'
 import { useAppStore } from '../state/store'
 import type { SpecUnitRef } from '../cloud/specs'
 import { UnitCard } from '../card/UnitCard'
+import { ModsEditor } from '../maker/ModsEditor'
+import { ScaledCard } from './ScaledCard'
 import { t } from './i18n'
 
 /**
- * A unit's card shown on top of the page it was clicked on (the China page):
+ * A unit's card shown on top of the page it was clicked on (a specialization):
  * look at it in compact or expanded form, edit an online card in place and
  * save it, or open it in the card maker, whose back button returns to that
  * page. The card shown is the card maker's current card, so callers guard
@@ -132,7 +134,14 @@ export function CardViewer({ unitRef, returnTo, onClose }: { unitRef: SpecUnitRe
         )}
         <div className="card-viewer-body">
           {phase === 'ready' && card ? (
-            <UnitCard card={card} />
+            <>
+              <ScaledCard className="card-viewer-card" zoom="both" max={1.5}>
+                <UnitCard card={card} />
+              </ScaledCard>
+              <div className="card-viewer-side">
+                <ModsEditor />
+              </div>
+            </>
           ) : phase === 'loading' ? (
             <div className="saved-hint">{t(lang, 'cloudLoading')}</div>
           ) : null}

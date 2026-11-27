@@ -13,10 +13,12 @@ import {
 } from './model'
 import { EditableText } from './EditableText'
 import { ammoIconUrl, chromeUrl, iconUrl, isUploadedImage, portraitUrl, weaponIconUrl } from '../assets'
+import { useCardCompact, useCardEditMode, useCardView } from './cardContext'
 import { useAppStore } from '../state/store'
 import { WeaponType, WeaponTypeLocKey } from '../data/enums'
 import { isMissileAmmo } from '../data/resolve'
 import { ColorableIcon } from '../ui/ColorableIcon'
+import { ammoLibrary, weaponLibrary } from '../ui/libraryItems'
 import { PickerDialog, type PickerItem } from '../ui/PickerDialog'
 import { TAG_ICON_NAMES, prettyIconName } from '../ui/iconLibrary'
 import { t } from '../ui/i18n'
@@ -144,7 +146,7 @@ function WeaponMover({ index, count }: { index: number; count: number }) {
 
 /** Weapon count badge; editable (number only) in edit mode. */
 function WeaponCount({ value, onChange }: { value: string; onChange(v: string): void }) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   if (!editMode) return value ? <span className="weapon-count">{value}</span> : null
   const num = value.replace(/\D/g, '')
   return (
@@ -168,7 +170,7 @@ function TagPill({ value, colorKey, onChange }: {
   colorKey: string
   onChange(v: string): void
 }) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   // empty pills only exist as edit-mode placeholders; EditableText renders the
   // filled ones in both modes so a recolored pill keeps its color on export
   if (!editMode && !value) return null
@@ -189,7 +191,7 @@ function WeaponIcon({ weapon, index, className }: {
   index: number
   className: string
 }) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const lang = useAppStore((s) => s.lang)
   const slots = useSlots()
   const icon = (
@@ -223,7 +225,7 @@ function AmmoIcon({ ammo, weaponIndex, ammoIndex, btnClassName }: {
   ammoIndex: number
   btnClassName?: string
 }) {
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const lang = useAppStore((s) => s.lang)
   const slots = useSlots()
   const icon = (
@@ -264,8 +266,9 @@ function RemoveBtn({ onClick, className }: { onClick(): void; className?: string
 }
 
 export function UnitCard({ card }: { card: CardModel }) {
-  const compact = useAppStore((s) => s.compact)
-  const editMode = useAppStore((s) => s.editMode)
+  const compact = useCardCompact()
+  const editMode = useCardEditMode()
+  const view = useCardView()
   const db = useAppStore((s) => s.db)
   const lang = useAppStore((s) => s.lang)
   const update = useAppStore((s) => s.updateCard)
@@ -282,39 +285,8 @@ export function UnitCard({ card }: { card: CardModel }) {
     | null
   >(null)
 
-  const weaponItems = useMemo<PickerItem[]>(() => {
-    if (!db) return []
-    const seen = new Set<string>()
-    const items: PickerItem[] = []
-    for (const w of db.tables.Weapons) {
-      const key = `${w.HUDIcon}|${w.HUDName}|${w.Type}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      items.push({
-        key: String(w.Id),
-        label: db.cardLoc(w.HUDName) || w.Name || w.HUDIcon || `Weapon ${w.Id}`,
-        url: weaponIconUrl(w.HUDIcon),
-      })
-    }
-    return items.sort((a, b) => a.label.localeCompare(b.label))
-  }, [db])
-
-  const ammoItems = useMemo<PickerItem[]>(() => {
-    if (!db) return []
-    const seen = new Set<string>()
-    const items: PickerItem[] = []
-    for (const a of db.tables.Ammunitions) {
-      const key = `${a.HUDIcon}|${a.HUDName}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      items.push({
-        key: String(a.Id),
-        label: db.cardLoc(a.HUDName) || a.Name || a.HUDIcon || `Ammo ${a.Id}`,
-        url: ammoIconUrl(a.HUDIcon),
-      })
-    }
-    return items.sort((a, b) => a.label.localeCompare(b.label))
-  }, [db])
+  const weaponLib = useMemo(() => (db ? weaponLibrary(db, lang) : { items: [], groups: [] }), [db, lang])
+  const ammoLib = useMemo(() => (db ? ammoLibrary(db, lang) : { items: [], groups: [] }), [db, lang])
 
   const tagItems = useMemo<PickerItem[]>(
     () => TAG_ICON_NAMES.map((n) => ({ key: n, label: prettyIconName(n), url: iconUrl(n) })),
@@ -408,7 +380,7 @@ export function UnitCard({ card }: { card: CardModel }) {
 
   return (
     <SlotContext.Provider value={slots}>
-      <div className="card-root" id="unit-card-root">
+      <div className="card-root" id={view?.readOnly ? undefined : 'unit-card-root'}>
       <div className="unit-card">
         <TopInfoBar card={card} />
         <div className="h-divider" />
@@ -468,7 +440,8 @@ export function UnitCard({ card }: { card: CardModel }) {
       {picker?.kind === 'weapon' && (
         <PickerDialog
           title={t(lang, 'selectWeapon')}
-          items={weaponItems}
+          items={weaponLib.items}
+          groups={weaponLib.groups}
           iconClassName="mirror"
           onPick={pickWeapon}
           onUpload={uploadWeapon}
@@ -478,7 +451,8 @@ export function UnitCard({ card }: { card: CardModel }) {
       {picker?.kind === 'ammo' && (
         <PickerDialog
           title={t(lang, 'selectAmmo')}
-          items={ammoItems}
+          items={ammoLib.items}
+          groups={ammoLib.groups}
           onPick={pickAmmo}
           onUpload={uploadAmmo}
           onCancel={() => setPicker(null)}
@@ -509,7 +483,7 @@ export function UnitCard({ card }: { card: CardModel }) {
 
 function TopInfoBar({ card }: { card: CardModel }) {
   const update = useAppStore((s) => s.updateCard)
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const style = useAppStore((s) => s.style)
   const lang = useAppStore((s) => s.lang)
   const slots = useSlots()
@@ -527,7 +501,10 @@ function TopInfoBar({ card }: { card: CardModel }) {
   return (
     <div className="top-info-bar">
       <div className="hero">
-        <Img className="hero-portrait" src={portraitUrl(card.portrait)} alt={card.name} />
+        {card.background && <img className="hero-portrait" src={card.background} alt="" />}
+        {(!card.background || isUploadedImage(card.portrait)) && (
+          <Img className="hero-portrait" src={portraitUrl(card.portrait)} alt={card.name} />
+        )}
         <img className="hero-gradient top" src={chromeUrl('Unit Info Card Background Top')} alt="" />
         <img className="hero-gradient right" src={chromeUrl('Unit Info Card Background Right')} alt="" />
         <img className="hero-gradient bottom" src={chromeUrl('Unit Info Card Background Bottom')} alt="" />
@@ -746,7 +723,7 @@ function WeaponDetail({
   aircraft: boolean
 }) {
   const update = useAppStore((s) => s.updateCard)
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const style = useAppStore((s) => s.style)
   const lang = useAppStore((s) => s.lang)
   const db = useAppStore((s) => s.db)
@@ -943,7 +920,7 @@ function showsMissileRange(w: WeaponModel, editMode: boolean): boolean {
 
 function BottomCompactBar({ card }: { card: CardModel }) {
   const update = useAppStore((s) => s.updateCard)
-  const editMode = useAppStore((s) => s.editMode)
+  const editMode = useCardEditMode()
   const style = useAppStore((s) => s.style)
   const lang = useAppStore((s) => s.lang)
   const slots = useSlots()
@@ -976,7 +953,7 @@ function BottomCompactBar({ card }: { card: CardModel }) {
       {card.weapons.map((w, wi) => (
         <CompactWeaponRow key={wi} index={wi}>
           {editMode && card.weapons.length > 1 && <WeaponMover index={wi} count={card.weapons.length} />}
-          <div className="compact-weapon-left">
+          <div className={`compact-weapon-left ${card.aircraft && showsMissileRange(w, editMode) ? 'has-distance' : ''}`}>
             {editMode && <RemoveBtn className="compact-remove" onClick={() => slots.removeWeapon(wi)} />}
             <EditableText
               className="compact-weapon-name"
@@ -997,8 +974,10 @@ function BottomCompactBar({ card }: { card: CardModel }) {
               />
             )}
             {/* a plane's missiles (air-to-air, air-to-ground, cruise) carry
-                their range on the weapon, at the bottom-right of the
-                silhouette, as in game; it is the first munition's range, so
+                their range on the weapon, at the bottom-right corner of the
+                silhouette's box, below the missile, as in game (Unit Info
+                Card Compact Weapon Info: Distance anchored bottom-right of a
+                124x48 icon); it is the first munition's range, so
                 it stays in step with the expanded view's effective range */}
             {card.aircraft && showsMissileRange(w, editMode) && (
               <EditableText
