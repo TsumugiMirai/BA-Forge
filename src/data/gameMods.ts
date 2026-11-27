@@ -3,8 +3,9 @@
 
 import type { GameDb } from './db'
 import type { VariantSelection } from './resolve'
+import { fillMissileFlags, resolveCard } from './resolve'
 import type { ModSlot } from '../ui/ModificationsPanel'
-import type { CardModSlot } from '../card/model'
+import type { CardModel, CardModSlot, WeaponModel } from '../card/model'
 import { iconUrl, weaponIconUrl } from '../assets'
 import { OPTION_ICON_FILES } from './optionIcons'
 
@@ -28,6 +29,77 @@ export function customModSlots(slots: ModSlot[]): CardModSlot[] {
     current: Math.max(0, s.options.findIndex((o) => o.key === s.current)),
     options: s.options.map((o) => ({ name: o.name, cost: o.cost, icon: o.iconRef ?? null })),
   }))
+}
+
+/** a weapon entry as shown (name, icon, mount count): how the same game weapon
+ *  is recognised in two variants' lists */
+function weaponKey(w: WeaponModel): string {
+  return `${w.name}|${w.icon ?? ''}|${w.count}`
+}
+
+/**
+ * For each option of game slot `slotIndex`: the indices, in that variant's
+ * weapon list, of the weapons the option brings, i.e. those not shared by
+ * every option of the slot (the main gun stays whatever the machine-gun slot
+ * picks). Lists are compared as multisets, so a second, identical machine gun
+ * counts as the option's own.
+ */
+function optionWeapons(lists: WeaponModel[][]): number[][] {
+  const counts = lists.map((l) => {
+    const m = new Map<string, number>()
+    for (const w of l) m.set(weaponKey(w), (m.get(weaponKey(w)) ?? 0) + 1)
+    return m
+  })
+  const shared = new Map<string, number>()
+  for (const [k, n] of counts[0] ?? []) shared.set(k, Math.min(n, ...counts.map((c) => c.get(k) ?? 0)))
+  return lists.map((l) => {
+    const left = new Map(shared)
+    const own: number[] = []
+    l.forEach((w, i) => {
+      const n = left.get(weaponKey(w)) ?? 0
+      if (n > 0) left.set(weaponKey(w), n - 1)
+      else own.push(i)
+    })
+    return own
+  })
+}
+
+/**
+ * Make a game unit's slots the card's own, weapons included, so picking an
+ * option swaps the weapons as in the game: the card's weapons the chosen
+ * options bring are tagged with their slot, and every other option carries
+ * the game's weapons for it. The card's weapons are matched to the game's by
+ * position when the lists have the same length (renamed in place, e.g.
+ * Kord → QJZ-171), else by name and icon; unmatched ones stay the unit's own.
+ */
+export function makeGameSlotsCustom(db: GameDb, card: CardModel, unitId: number, selection: VariantSelection) {
+  const slots = gameModSlots(db, unitId, selection)
+  const mods = customModSlots(slots)
+  const variant = (sel: VariantSelection) => fillMissileFlags(db, resolveCard(db, unitId, sel)).weapons
+  const current = variant(selection)
+  const inPlace = current.length === card.weapons.length
+
+  slots.forEach((slot, si) => {
+    const lists = slot.options.map((o) => variant({ ...selection, [Number(slot.key)]: Number(o.key) }))
+    const own = optionWeapons(lists)
+    const mod = mods[si]!
+    mod.options.forEach((opt, oi) => {
+      if (oi === mod.current) return
+      const weapons = own[oi]!.map((i) => structuredClone(lists[oi]![i]!))
+      if (weapons.length > 0) opt.weapons = weapons
+    })
+    // the chosen option's weapons are on the card already
+    for (const gi of own[mod.current] ?? []) {
+      const w = current[gi]
+      if (!w) continue
+      const ci = inPlace
+        ? gi
+        : card.weapons.findIndex((c) => c.modSlot == null && weaponKey(c) === weaponKey(w))
+      const target = card.weapons[ci]
+      if (target && target.modSlot == null) target.modSlot = si
+    }
+  })
+  card.mods = mods
 }
 
 export function gameModSlots(db: GameDb, unitId: number, selection: VariantSelection): ModSlot[] {

@@ -5,7 +5,7 @@ import type { VariantSelection } from '../data/resolve'
 import { fillMissileFlags, resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
 import { emptyCard, normalizeCard, switchModOption } from '../card/model'
-import { customModSlots, gameModSlots } from '../data/gameMods'
+import { gameModSlots, makeGameSlotsCustom } from '../data/gameMods'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
@@ -396,14 +396,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { db, selectedUnitId, selection, card } = get()
     if (!db || selectedUnitId == null) return
     // A card changed from the game's own (a library card, an edited copy)
-    // would lose its name, weapons and stats if rebuilt from game data: the
-    // game's slots become its own instead, and the option is picked there
-    // (only the cost moves, like any custom slot).
+    // would lose its name and edits if rebuilt from game data: the game's
+    // slots become its own instead, each option with the game's weapons for
+    // it, and the option is picked there (cost and the option's weapons
+    // change, the rest stays).
     if (card && !card.mods && !isGameCard(db, card, selectedUnitId, selection)) {
       const slots = gameModSlots(db, selectedUnitId, selection)
       const slot = slots.findIndex((s) => s.key === String(modificationId))
       const option = slots[slot]?.options.findIndex((o) => o.key === String(optionId)) ?? -1
-      get().updateCard((c) => void (c.mods = customModSlots(slots)))
+      get().updateCard((c) => makeGameSlotsCustom(db, c, selectedUnitId, selection))
       if (slot >= 0 && option >= 0) get().selectCardMod(slot, option)
       return
     }

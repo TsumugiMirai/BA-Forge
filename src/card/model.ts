@@ -421,6 +421,37 @@ export function switchModOption(card: CardModel, slot: number, to: number) {
   s.current = to
 }
 
+/** a weapon as shown (name, icon, mount count), to tell the same weapon on two cards */
+function shownWeapon(w: WeaponModel): string {
+  return `${w.name}|${w.icon ?? ''}|${w.count}`
+}
+
+/**
+ * Give the chosen option of custom slot `slot` the weapons of another card
+ * (merging two cards into one with a slot, like the game's squad loadouts):
+ * the weapons the option carries now are dropped, and `other`'s weapons are
+ * added for it, except those the card already shows as its own (same name,
+ * icon and count: they stay shared by every option).
+ */
+export function importOptionWeapons(card: CardModel, slot: number, other: WeaponModel[]) {
+  for (let i = card.weapons.length - 1; i >= 0; i--) {
+    if (card.weapons[i]!.modSlot !== slot) continue
+    card.weapons.splice(i, 1)
+    removeIndexedColors(card, 'weapon.', i)
+  }
+  const shared = new Map<string, number>()
+  for (const w of card.weapons)
+    if (w.modSlot == null) shared.set(shownWeapon(w), (shared.get(shownWeapon(w)) ?? 0) + 1)
+  for (const w of other) {
+    const n = shared.get(shownWeapon(w)) ?? 0
+    if (n > 0) {
+      shared.set(shownWeapon(w), n - 1)
+      continue
+    }
+    card.weapons.push({ ...structuredClone(w), modSlot: slot })
+  }
+}
+
 /** After removing custom slot `removed`, its weapons become the unit's own
  *  and later slots' weapon tags move down with their slots. */
 export function untagRemovedModSlot(card: CardModel, removed: number) {

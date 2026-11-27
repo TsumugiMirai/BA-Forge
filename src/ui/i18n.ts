@@ -145,6 +145,11 @@ const STRINGS = {
     chi: '选中填了名称的选项时，卡片会改成这个名称（像游戏里的变体名）；切走的选项会记住原来的名称，再选回来就恢复。留空 = 不改名。',
   },
   modNameNone: { eng: '(keeps the name)', chi: '（不改名）' },
+  importOptionWeapons: { eng: 'Weapons from a card…', chi: '从卡片导入武器…' },
+  importOptionWeaponsHint: {
+    eng: 'Gives the chosen option the weapons of another card (to merge two cards into one, like the game’s squad loadouts): its current weapons are replaced, and weapons this card already has as its own stay shared.',
+    chi: '把另一张卡的武器设为当前选中选项的武器（用来把两张卡合并成一张，像游戏里的班组配置）：这个选项原来的武器会被替换，两张卡都有的武器保持共用。',
+  },
   modWeaponsHint: {
     eng: 'Ticked weapons belong to the chosen option: picking another option swaps them for that option’s own weapons. Pick an option, add its weapons to the card and tick them here.',
     chi: '勾选的武器属于当前选中的选项：切换选项时会换成那个选项自己的武器。先选中一个选项，在卡面上添加它的武器，再在这里勾选。',
