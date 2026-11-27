@@ -4,7 +4,7 @@ import { loadGameDb } from '../data/db'
 import type { VariantSelection } from '../data/resolve'
 import { fillMissileFlags, resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
-import { emptyCard, normalizeCard } from '../card/model'
+import { emptyCard, normalizeCard, switchModOption } from '../card/model'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
@@ -488,7 +488,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = s?.options[option]
       if (!s || !next) return
       const before = s.options[s.current]?.cost ?? 0
-      s.current = option
+      switchModOption(c, slot, option)
       const delta = next.cost - before
       const m = /-?\d+(?:\.\d+)?/.exec(c.cost)
       if (delta && m) c.cost = c.cost.replace(m[0], String(Math.round((Number(m[0]) + delta) * 100) / 100))

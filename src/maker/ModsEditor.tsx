@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAppStore } from '../state/store'
 import type { CardModSlot } from '../card/model'
+import { untagRemovedModSlot } from '../card/model'
 import { iconUrl, weaponIconUrl } from '../assets'
 import { gameModSlots } from '../data/gameMods'
 import { ModificationsPanel } from '../ui/ModificationsPanel'
@@ -133,7 +134,16 @@ export function ModsEditor() {
               placeholder={t(lang, 'modSlotName')}
               onChange={(e) => setMods((m) => void (m[si]!.name = e.target.value))}
             />
-            <button className="mods-x" title={t(lang, 'remove')} onClick={() => setMods((m) => void m.splice(si, 1))}>
+            <button
+              className="mods-x"
+              title={t(lang, 'remove')}
+              onClick={() =>
+                update((c) => {
+                  c.mods?.splice(si, 1)
+                  untagRemovedModSlot(c, si)
+                })
+              }
+            >
               ×
             </button>
           </div>
@@ -181,14 +191,17 @@ export function ModsEditor() {
                 className="mods-x"
                 title={t(lang, 'remove')}
                 disabled={slot.options.length <= 1}
-                onClick={() =>
+                onClick={() => {
+                  // removing the chosen option: choose another first, so the
+                  // card's weapons and cost follow
+                  if (slot.current === oi) selectCardMod(si, oi === 0 ? 1 : 0)
                   setMods((m) => {
                     const s = m[si]!
                     s.options.splice(oi, 1)
-                    if (s.current >= s.options.length || s.current === oi) s.current = 0
-                    else if (s.current > oi) s.current--
+                    if (s.current > oi) s.current--
+                    if (s.current >= s.options.length) s.current = 0
                   })
-                }
+                }}
               >
                 ×
               </button>
@@ -200,6 +213,38 @@ export function ModsEditor() {
           >
             {t(lang, 'addModOption')}
           </button>
+          {card.weapons.length > 0 && (
+            <div className="mods-weapons">
+              <div className="mods-weapons-title" title={t(lang, 'modWeaponsHint')}>
+                {t(lang, 'modWeapons')}
+              </div>
+              {card.weapons.map((w, wi) => {
+                const other = w.modSlot != null && w.modSlot !== si ? (list[w.modSlot]?.name ?? '') : null
+                return (
+                  <label key={wi} className={`mods-weapon ${other != null ? 'other' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={w.modSlot === si}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        update((c) => {
+                          const x = c.weapons[wi]
+                          if (!x) return
+                          if (checked) x.modSlot = si
+                          else delete x.modSlot
+                        })
+                      }}
+                    />
+                    <span className="mods-weapon-name">
+                      {w.name || '—'}
+                      {w.count ? ` ${w.count}` : ''}
+                    </span>
+                    {other != null && <span className="mods-weapon-other">{other}</span>}
+                  </label>
+                )
+              })}
+            </div>
+          )}
         </div>
       ))}
       <button

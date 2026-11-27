@@ -820,8 +820,10 @@ body {
 }
 .mods-row:hover, .mods-option:hover { background: rgba(255, 255, 255, 0.1); }
 .mods-slot.open .mods-row { border-left-color: #e7f8e5; background: rgba(255, 255, 255, 0.12); }
-.mods-row-name { flex: 1; min-width: 0; font-weight: 600; }
-.mods-row-current { color: #aab6c2; font-size: 12px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mods-row-name { flex: 1 0 auto; font-weight: 600; white-space: nowrap; }
+.mods-row-current { flex: 0 1 auto; min-width: 0; color: #aab6c2; font-size: 12px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the chosen option's picture on a slot row: a little narrower than in the list */
+.mods-row .mods-icon.wide { width: 44px; }
 .mods-cost { color: #f4d42a; font-weight: 700; min-width: 34px; text-align: right; }
 .mods-options { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 6px 14px; }
 .mods-option { background: rgba(255, 255, 255, 0.03); }

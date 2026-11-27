@@ -55,7 +55,7 @@ export function ModificationsPanel({
         return (
           <div key={slot.key} className={`mods-slot ${expanded ? 'open' : ''}`}>
             <button className="mods-row" onClick={() => setOpen(expanded ? null : slot.key)}>
-              <ModIcon src={slot.icon ?? SLOT_ICON} />
+              <ModIcon src={current?.icon ?? slot.icon ?? SLOT_ICON} wide={!!current?.icon} />
               <span className="mods-row-name">{slot.name}</span>
               <span className="mods-row-current">{current?.name}</span>
               <span className="mods-cost">{signed(current?.cost ?? 0)}</span>
