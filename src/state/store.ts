@@ -5,6 +5,7 @@ import type { VariantSelection } from '../data/resolve'
 import { fillMissileFlags, resolveCard } from '../data/resolve'
 import type { CardModel, CardStyle } from '../card/model'
 import { emptyCard, normalizeCard, switchModOption } from '../card/model'
+import { customModSlots, gameModSlots } from '../data/gameMods'
 import type { LogModel } from '../log/logModel'
 import { emptyLog, emptyLogEntry, logUnitFromCard } from '../log/logModel'
 import type { SavedCard } from './savedCards'
@@ -249,6 +250,13 @@ function resolve(db: GameDb, unitId: number, selection: VariantSelection): CardM
   return resolveCard(db, unitId, selection)
 }
 
+/** whether `card` is still exactly the game unit's own card for `selection`
+ *  (nothing renamed, retuned or recolored), so rebuilding it loses nothing */
+function isGameCard(db: GameDb, card: CardModel, unitId: number, selection: VariantSelection): boolean {
+  const game = upgradeCard(db, resolve(db, unitId, selection))
+  return JSON.stringify(game) === JSON.stringify(upgradeCard(db, card))
+}
+
 /** a stored card ready for the editor: a copy brought up to the current model */
 function upgradeCard(db: GameDb | null, stored: CardModel): CardModel {
   const card = normalizeCard(structuredClone(stored))
@@ -385,15 +393,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectOption(modificationId, optionId) {
-    const { db, selectedUnitId, selection } = get()
+    const { db, selectedUnitId, selection, card } = get()
     if (!db || selectedUnitId == null) return
+    // A card changed from the game's own (a library card, an edited copy)
+    // would lose its name, weapons and stats if rebuilt from game data: the
+    // game's slots become its own instead, and the option is picked there
+    // (only the cost moves, like any custom slot).
+    if (card && !card.mods && !isGameCard(db, card, selectedUnitId, selection)) {
+      const slots = gameModSlots(db, selectedUnitId, selection)
+      const slot = slots.findIndex((s) => s.key === String(modificationId))
+      const option = slots[slot]?.options.findIndex((o) => o.key === String(optionId)) ?? -1
+      get().updateCard((c) => void (c.mods = customModSlots(slots)))
+      if (slot >= 0 && option >= 0) get().selectCardMod(slot, option)
+      return
+    }
+    // still the game's card: the variant rebuilds it (asking first when it
+    // has unsaved edits, e.g. only its colors changed)
     const next = { ...selection, [modificationId]: optionId }
-    set({
-      selection: next,
-      card: resolve(db, selectedUnitId, next),
-      dirty: false,
-      colorTarget: null,
-    })
+    get().guardEdits(() =>
+      set({
+        selection: next,
+        card: resolve(db, selectedUnitId, next),
+        dirty: false,
+        colorTarget: null,
+      }),
+    )
   },
 
   setCompact(compact) {

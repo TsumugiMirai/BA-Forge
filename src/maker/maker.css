@@ -121,6 +121,17 @@
 }
 .mods-add:hover { border-color: #e8b23a; color: #e8b23a; }
 .mods-add.small { padding: 3px; font-size: 11px; }
+.mods-names { margin-top: 4px; font-size: 12px; }
+.mods-names summary { font-size: 11px; color: #aab6c2; cursor: pointer; }
+.mods-name-row { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+.mods-name-option {
+  flex: none;
+  width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #aab6c2;
+}
 .mods-weapons {
   display: flex;
   flex-direction: column;

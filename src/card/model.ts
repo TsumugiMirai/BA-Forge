@@ -138,6 +138,9 @@ export interface CardModOption {
   /** color overrides of those weapons, keyed like textColors but relative to
    *  the list ("0.name", "1.ammo.0.range") */
   weaponColors?: Record<string, string>
+  /** the card's name while this option is chosen (like the game's variant
+   *  names, "Jiaolong Commandos (CQC)"); absent = choosing it keeps the name */
+  cardName?: string
 }
 
 /** a modification slot of a custom card, like the game's armor/weapon slots */
@@ -357,7 +360,8 @@ export function moveIndexed<T>(card: CardModel, list: T[], prefix: string, from:
  * the slot carries: the weapons tagged with the slot (the old option's) are
  * stored on the old option, color overrides included, and the new option's
  * stored weapons take their place in the list (at the end when the old option
- * had none). Cost is not touched here.
+ * had none). A new option with its own card name renames the card. Cost is
+ * not touched here.
  */
 export function switchModOption(card: CardModel, slot: number, to: number) {
   const s = card.mods?.[slot]
@@ -407,6 +411,13 @@ export function switchModOption(card: CardModel, slot: number, to: number) {
   }
   delete next.weapons
   delete next.weaponColors
+
+  // an option with a name of its own renames the card; the old option keeps
+  // the name it leaves (edits included), so choosing it again brings it back
+  if (next.cardName) {
+    if (old) old.cardName = card.name
+    card.name = next.cardName
+  }
   s.current = to
 }
 

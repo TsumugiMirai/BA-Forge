@@ -139,6 +139,12 @@ const STRINGS = {
   modDefaultOption: { eng: 'Default', chi: '默认' },
   modNewSlot: { eng: 'Modification', chi: '改装件' },
   modWeapons: { eng: 'Weapons of the chosen option', chi: '选中选项带的武器' },
+  modNames: { eng: 'Card name per option', chi: '选项对应的卡片名称' },
+  modNamesHint: {
+    eng: 'Choosing an option with a name renames the card (like the game’s variants); the option left keeps the name it had, so choosing it again brings it back. Empty = the name stays.',
+    chi: '选中填了名称的选项时，卡片会改成这个名称（像游戏里的变体名）；切走的选项会记住原来的名称，再选回来就恢复。留空 = 不改名。',
+  },
+  modNameNone: { eng: '(keeps the name)', chi: '（不改名）' },
   modWeaponsHint: {
     eng: 'Ticked weapons belong to the chosen option: picking another option swaps them for that option’s own weapons. Pick an option, add its weapons to the card and tick them here.',
     chi: '勾选的武器属于当前选中的选项：切换选项时会换成那个选项自己的武器。先选中一个选项，在卡面上添加它的武器，再在这里勾选。',

@@ -4,6 +4,7 @@
 import type { GameDb } from './db'
 import type { VariantSelection } from './resolve'
 import type { ModSlot } from '../ui/ModificationsPanel'
+import type { CardModSlot } from '../card/model'
 import { iconUrl, weaponIconUrl } from '../assets'
 import { OPTION_ICON_FILES } from './optionIcons'
 
@@ -13,6 +14,20 @@ const ARMOR_SLOT = 5
 /** Prettify unresolved localization keys like "Custom_Option_Default". */
 export function prettyModName(s: string): string {
   return s.replace(/^Custom_(Option|Slot)_/, '').replace(/_/g, ' ')
+}
+
+/** default icon of a custom slot (as a card stores it, see maker/ModsEditor) */
+export const DEFAULT_SLOT_ICON = 'icon:Modification Icon'
+
+/** The game unit's slots as a card's own custom ones (names, icons, costs and
+ *  the chosen options kept), to edit or pick from without rebuilding the card. */
+export function customModSlots(slots: ModSlot[]): CardModSlot[] {
+  return slots.map((s) => ({
+    name: s.name,
+    icon: s.iconRef ?? DEFAULT_SLOT_ICON,
+    current: Math.max(0, s.options.findIndex((o) => o.key === s.current)),
+    options: s.options.map((o) => ({ name: o.name, cost: o.cost, icon: o.iconRef ?? null })),
+  }))
 }
 
 export function gameModSlots(db: GameDb, unitId: number, selection: VariantSelection): ModSlot[] {

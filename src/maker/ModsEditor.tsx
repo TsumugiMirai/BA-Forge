@@ -3,7 +3,7 @@ import { useAppStore } from '../state/store'
 import type { CardModSlot } from '../card/model'
 import { untagRemovedModSlot } from '../card/model'
 import { iconUrl, weaponIconUrl } from '../assets'
-import { gameModSlots } from '../data/gameMods'
+import { DEFAULT_SLOT_ICON, customModSlots, gameModSlots } from '../data/gameMods'
 import { ModificationsPanel } from '../ui/ModificationsPanel'
 import type { ModSlot } from '../ui/ModificationsPanel'
 import { VariantPanel } from '../ui/VariantPanel'
@@ -23,8 +23,6 @@ export function modIconUrl(ref: string | null | undefined): string | null {
   return ref
 }
 
-const DEFAULT_SLOT_ICON = 'icon:Modification Icon'
-
 /** a card's custom slots in the panel's shape */
 export function cardModSlots(mods: CardModSlot[]): ModSlot[] {
   return mods.map((m, i) => ({
@@ -33,16 +31,6 @@ export function cardModSlots(mods: CardModSlot[]): ModSlot[] {
     icon: modIconUrl(m.icon ?? DEFAULT_SLOT_ICON),
     current: String(m.current),
     options: m.options.map((o, j) => ({ key: String(j), name: o.name, cost: o.cost, icon: modIconUrl(o.icon) })),
-  }))
-}
-
-/** the game unit's slots as custom ones, to edit from there */
-function fromGame(slots: ModSlot[]): CardModSlot[] {
-  return slots.map((s) => ({
-    name: s.name,
-    icon: s.iconRef ?? DEFAULT_SLOT_ICON,
-    current: Math.max(0, s.options.findIndex((o) => o.key === s.current)),
-    options: s.options.map((o) => ({ name: o.name, cost: o.cost, icon: o.iconRef ?? null })),
   }))
 }
 
@@ -96,7 +84,7 @@ export function ModsEditor() {
         {editMode && (
           <button
             className="mods-add"
-            onClick={() => update((c) => void (c.mods = fromGame(game)))}
+            onClick={() => update((c) => void (c.mods = customModSlots(game)))}
           >
             {t(lang, 'customizeMods')}
           </button>
@@ -213,6 +201,31 @@ export function ModsEditor() {
           >
             {t(lang, 'addModOption')}
           </button>
+          <details className="mods-names" open={slot.options.some((o) => !!o.cardName)}>
+            <summary title={t(lang, 'modNamesHint')}>{t(lang, 'modNames')}</summary>
+            {slot.options.map((o, oi) => (
+              <label key={oi} className="mods-name-row">
+                <span className="mods-name-option">{o.name || '—'}</span>
+                <input
+                  className="mods-input"
+                  value={o.cardName ?? ''}
+                  placeholder={t(lang, 'modNameNone')}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    update((c) => {
+                      const s = c.mods?.[si]
+                      const opt = s?.options[oi]
+                      if (!s || !opt) return
+                      if (name) opt.cardName = name
+                      else delete opt.cardName
+                      // the chosen option's name is the card's
+                      if (s.current === oi && name) c.name = name
+                    })
+                  }}
+                />
+              </label>
+            ))}
+          </details>
           {card.weapons.length > 0 && (
             <div className="mods-weapons">
               <div className="mods-weapons-title" title={t(lang, 'modWeaponsHint')}>
