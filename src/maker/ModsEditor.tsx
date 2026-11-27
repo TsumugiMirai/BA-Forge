@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useAppStore } from '../state/store'
-import type { CardModSlot } from '../card/model'
-import { untagRemovedModSlot } from '../card/model'
-import { iconUrl, weaponIconUrl } from '../assets'
-import { gameModSlots } from '../data/gameMods'
+import type { CardModel, CardModSlot } from '../card/model'
+import { importOptionWeapons, untagRemovedModSlot } from '../card/model'
+import { iconUrl, thumbnailUrl, weaponIconUrl } from '../assets'
+import { getCloudCard } from '../cloud/cloudCards'
+import { parseSavedCardFile } from '../state/savedCards'
+import { DEFAULT_SLOT_ICON, makeGameSlotsCustom } from '../data/gameMods'
 import { ModificationsPanel } from '../ui/ModificationsPanel'
 import type { ModSlot } from '../ui/ModificationsPanel'
 import { VariantPanel } from '../ui/VariantPanel'
@@ -23,8 +25,6 @@ export function modIconUrl(ref: string | null | undefined): string | null {
   return ref
 }
 
-const DEFAULT_SLOT_ICON = 'icon:Modification Icon'
-
 /** a card's custom slots in the panel's shape */
 export function cardModSlots(mods: CardModSlot[]): ModSlot[] {
   return mods.map((m, i) => ({
@@ -33,16 +33,6 @@ export function cardModSlots(mods: CardModSlot[]): ModSlot[] {
     icon: modIconUrl(m.icon ?? DEFAULT_SLOT_ICON),
     current: String(m.current),
     options: m.options.map((o, j) => ({ key: String(j), name: o.name, cost: o.cost, icon: modIconUrl(o.icon) })),
-  }))
-}
-
-/** the game unit's slots as custom ones, to edit from there */
-function fromGame(slots: ModSlot[]): CardModSlot[] {
-  return slots.map((s) => ({
-    name: s.name,
-    icon: s.iconRef ?? DEFAULT_SLOT_ICON,
-    current: Math.max(0, s.options.findIndex((o) => o.key === s.current)),
-    options: s.options.map((o) => ({ name: o.name, cost: o.cost, icon: o.iconRef ?? null })),
   }))
 }
 
@@ -63,6 +53,38 @@ export function ModsEditor() {
   const selectCardMod = useAppStore((s) => s.selectCardMod)
   const editMode = useCardEditMode()
   const [picker, setPicker] = useState<{ slot: number; option: number | null } | null>(null)
+  // slot whose chosen option takes another card's weapons
+  const [importSlot, setImportSlot] = useState<number | null>(null)
+  const cloudCards = useAppStore((s) => s.cloudCards)
+  const savedCards = useAppStore((s) => s.savedCards)
+
+  // the cards to take weapons from: the online library and this browser's
+  const cardItems = useMemo<{ items: PickerItem[]; groups: { key: string; label: string }[] }>(() => {
+    const thumb = (icon: string | null | undefined, unit: number | null) =>
+      icon || thumbnailUrl(unit != null ? (db?.units.get(unit)?.ThumbnailFileName ?? null) : null)
+    return {
+      items: [
+        ...cloudCards.map((c) => ({
+          key: `cloud:${c.id}`,
+          label: c.name,
+          sub: c.cost ?? undefined,
+          url: thumb(c.icon, c.unit_id),
+          group: 'cloud',
+        })),
+        ...savedCards.map((s) => ({
+          key: `local:${s.id}`,
+          label: s.name,
+          sub: s.card.cost,
+          url: thumb(s.card.icon, s.card.unitId),
+          group: 'local',
+        })),
+      ],
+      groups: [
+        { key: 'cloud', label: t(lang, 'cloudTitle') },
+        { key: 'local', label: t(lang, 'libraryLocal') },
+      ],
+    }
+  }, [cloudCards, savedCards, db, lang])
 
   const iconItems = useMemo<{ items: PickerItem[]; groups: { key: string; label: string }[] }>(() => {
     if (!db) return { items: [], groups: [] }
@@ -89,14 +111,13 @@ export function ModsEditor() {
 
   // a game unit's card still on the game's own slots
   if (!mods && unitId != null) {
-    const game = gameModSlots(db, unitId, selection)
     return (
       <div className="mods-editor">
         <VariantPanel />
         {editMode && (
           <button
             className="mods-add"
-            onClick={() => update((c) => void (c.mods = fromGame(game)))}
+            onClick={() => update((c) => makeGameSlotsCustom(db, c, unitId, selection))}
           >
             {t(lang, 'customizeMods')}
           </button>
@@ -213,6 +234,31 @@ export function ModsEditor() {
           >
             {t(lang, 'addModOption')}
           </button>
+          <details className="mods-names" open={slot.options.some((o) => !!o.cardName)}>
+            <summary title={t(lang, 'modNamesHint')}>{t(lang, 'modNames')}</summary>
+            {slot.options.map((o, oi) => (
+              <label key={oi} className="mods-name-row">
+                <span className="mods-name-option">{o.name || '—'}</span>
+                <input
+                  className="mods-input"
+                  value={o.cardName ?? ''}
+                  placeholder={t(lang, 'modNameNone')}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    update((c) => {
+                      const s = c.mods?.[si]
+                      const opt = s?.options[oi]
+                      if (!s || !opt) return
+                      if (name) opt.cardName = name
+                      else delete opt.cardName
+                      // the chosen option's name is the card's
+                      if (s.current === oi && name) c.name = name
+                    })
+                  }}
+                />
+              </label>
+            ))}
+          </details>
           {card.weapons.length > 0 && (
             <div className="mods-weapons">
               <div className="mods-weapons-title" title={t(lang, 'modWeaponsHint')}>
@@ -245,6 +291,13 @@ export function ModsEditor() {
               })}
             </div>
           )}
+          <button
+            className="mods-add small"
+            title={t(lang, 'importOptionWeaponsHint')}
+            onClick={() => setImportSlot(si)}
+          >
+            {t(lang, 'importOptionWeapons')}
+          </button>
         </div>
       ))}
       <button
@@ -262,6 +315,22 @@ export function ModsEditor() {
       >
         {t(lang, 'addModSlot')}
       </button>
+
+      {importSlot != null && (
+        <PickerDialog
+          title={t(lang, 'importOptionWeapons')}
+          items={cardItems.items}
+          groups={cardItems.groups}
+          onPick={(key) => {
+            const slot = importSlot
+            setImportSlot(null)
+            void loadCardForImport(key).then((other) => {
+              if (other) update((c) => importOptionWeapons(c, slot, other.weapons))
+            })
+          }}
+          onCancel={() => setImportSlot(null)}
+        />
+      )}
 
       {picker && (
         <PickerDialog
@@ -298,6 +367,18 @@ export function ModsEditor() {
       )}
     </div>
   )
+}
+
+/** a card picked in the import dialog ("cloud:<id>" or "local:<id>") */
+async function loadCardForImport(key: string): Promise<CardModel | null> {
+  const [source, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
+  if (source === 'local') return useAppStore.getState().savedCards.find((s) => s.id === id)?.card ?? null
+  try {
+    const row = await getCloudCard(id)
+    return row ? (parseSavedCardFile(JSON.stringify(row.data))?.card ?? null) : null
+  } catch {
+    return null
+  }
 }
 
 function IconButton({ src, wide, onClick }: { src: string | null; wide?: boolean; onClick(): void }) {

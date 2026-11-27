@@ -138,6 +138,9 @@ export interface CardModOption {
   /** color overrides of those weapons, keyed like textColors but relative to
    *  the list ("0.name", "1.ammo.0.range") */
   weaponColors?: Record<string, string>
+  /** the card's name while this option is chosen (like the game's variant
+   *  names, "Jiaolong Commandos (CQC)"); absent = choosing it keeps the name */
+  cardName?: string
 }
 
 /** a modification slot of a custom card, like the game's armor/weapon slots */
@@ -357,7 +360,8 @@ export function moveIndexed<T>(card: CardModel, list: T[], prefix: string, from:
  * the slot carries: the weapons tagged with the slot (the old option's) are
  * stored on the old option, color overrides included, and the new option's
  * stored weapons take their place in the list (at the end when the old option
- * had none). Cost is not touched here.
+ * had none). A new option with its own card name renames the card. Cost is
+ * not touched here.
  */
 export function switchModOption(card: CardModel, slot: number, to: number) {
   const s = card.mods?.[slot]
@@ -407,7 +411,45 @@ export function switchModOption(card: CardModel, slot: number, to: number) {
   }
   delete next.weapons
   delete next.weaponColors
+
+  // an option with a name of its own renames the card; the old option keeps
+  // the name it leaves (edits included), so choosing it again brings it back
+  if (next.cardName) {
+    if (old) old.cardName = card.name
+    card.name = next.cardName
+  }
   s.current = to
+}
+
+/** a weapon as shown (name, icon, mount count), to tell the same weapon on two cards */
+function shownWeapon(w: WeaponModel): string {
+  return `${w.name}|${w.icon ?? ''}|${w.count}`
+}
+
+/**
+ * Give the chosen option of custom slot `slot` the weapons of another card
+ * (merging two cards into one with a slot, like the game's squad loadouts):
+ * the weapons the option carries now are dropped, and `other`'s weapons are
+ * added for it, except those the card already shows as its own (same name,
+ * icon and count: they stay shared by every option).
+ */
+export function importOptionWeapons(card: CardModel, slot: number, other: WeaponModel[]) {
+  for (let i = card.weapons.length - 1; i >= 0; i--) {
+    if (card.weapons[i]!.modSlot !== slot) continue
+    card.weapons.splice(i, 1)
+    removeIndexedColors(card, 'weapon.', i)
+  }
+  const shared = new Map<string, number>()
+  for (const w of card.weapons)
+    if (w.modSlot == null) shared.set(shownWeapon(w), (shared.get(shownWeapon(w)) ?? 0) + 1)
+  for (const w of other) {
+    const n = shared.get(shownWeapon(w)) ?? 0
+    if (n > 0) {
+      shared.set(shownWeapon(w), n - 1)
+      continue
+    }
+    card.weapons.push({ ...structuredClone(w), modSlot: slot })
+  }
 }
 
 /** After removing custom slot `removed`, its weapons become the unit's own

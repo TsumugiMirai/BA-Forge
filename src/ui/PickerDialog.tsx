@@ -30,8 +30,8 @@ interface Props {
   iconClassName?: string
   /** a library item was chosen */
   onPick(key: string): void
-  /** a local image was uploaded (data URL) */
-  onUpload(dataUrl: string): void
+  /** a local image was uploaded (data URL); no upload button without it */
+  onUpload?(dataUrl: string): void
   /** clear the slot (only for slots that can be emptied, e.g. tag icons) */
   onClear?(): void
   onCancel(): void
@@ -109,7 +109,7 @@ export function PickerDialog({ title, items, groups, iconClassName, onPick, onUp
           {filtered.length === 0 && <div className="picker-empty">{t(lang, 'noMatches')}</div>}
         </div>
         <div className="picker-dialog-actions">
-          <button onClick={() => fileInput.current?.click()}>{t(lang, 'uploadImage')}</button>
+          {onUpload && <button onClick={() => fileInput.current?.click()}>{t(lang, 'uploadImage')}</button>}
           {onClear && <button onClick={onClear}>{t(lang, 'clear')}</button>}
           <span style={{ flex: 1 }} />
           <span className="picker-count">{filtered.length}</span>
@@ -125,7 +125,7 @@ export function PickerDialog({ title, items, groups, iconClassName, onPick, onUp
             e.target.value = ''
             if (!file) return
             const reader = new FileReader()
-            reader.onload = () => onUpload(String(reader.result))
+            reader.onload = () => onUpload?.(String(reader.result))
             reader.readAsDataURL(file)
           }}
         />
