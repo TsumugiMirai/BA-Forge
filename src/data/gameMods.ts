@@ -5,7 +5,8 @@ import type { GameDb } from './db'
 import type { VariantSelection } from './resolve'
 import { fillMissileFlags, resolveCard } from './resolve'
 import type { ModSlot } from '../ui/ModificationsPanel'
-import type { CardModel, CardModSlot, WeaponModel } from '../card/model'
+import type { BaseGroup, CardModel, CardModSlot, WeaponModel } from '../card/model'
+import { BASE_FIELDS, BASE_GROUPS } from '../card/model'
 import { iconUrl, weaponIconUrl } from '../assets'
 import { OPTION_ICON_FILES } from './optionIcons'
 
@@ -66,7 +67,8 @@ function optionWeapons(lists: WeaponModel[][]): number[][] {
 
 /**
  * Make a game unit's slots the card's own, weapons included, so picking an
- * option swaps the weapons as in the game: the card's weapons the chosen
+ * option swaps the weapons as in the game (and armor, stats, abilities or
+ * portrait where the game's options change them, e.g. armor packages): the card's weapons the chosen
  * options bring are tagged with their slot, and every other option carries
  * the game's weapons for it. The card's weapons are matched to the game's by
  * position when the lists have the same length (renamed in place, e.g.
@@ -75,14 +77,34 @@ function optionWeapons(lists: WeaponModel[][]): number[][] {
 export function makeGameSlotsCustom(db: GameDb, card: CardModel, unitId: number, selection: VariantSelection) {
   const slots = gameModSlots(db, unitId, selection)
   const mods = customModSlots(slots)
-  const variant = (sel: VariantSelection) => fillMissileFlags(db, resolveCard(db, unitId, sel)).weapons
-  const current = variant(selection)
+  const variant = (sel: VariantSelection) => fillMissileFlags(db, resolveCard(db, unitId, sel))
+  const current = variant(selection).weapons
   const inPlace = current.length === card.weapons.length
+  // each property group goes to the first slot whose options change it
+  const claimed = new Set<BaseGroup>()
 
   slots.forEach((slot, si) => {
-    const lists = slot.options.map((o) => variant({ ...selection, [Number(slot.key)]: Number(o.key) }))
+    const cards = slot.options.map((o) => variant({ ...selection, [Number(slot.key)]: Number(o.key) }))
+    const lists = cards.map((c) => c.weapons)
     const own = optionWeapons(lists)
     const mod = mods[si]!
+
+    // armor, stats, abilities, portrait: the options get the game's own when
+    // they differ (the death timer follows the cost, so it alone does not count)
+    for (const group of BASE_GROUPS) {
+      if (claimed.has(group)) continue
+      const fields = BASE_FIELDS[group].filter((f) => f !== 'deathTimer')
+      const shapes = new Set(cards.map((c) => JSON.stringify(fields.map((f) => c[f]))))
+      if (shapes.size < 2) continue
+      claimed.add(group)
+      ;(mod.controls ??= []).push(group)
+      mod.options.forEach((opt, oi) => {
+        if (oi === mod.current) return
+        const base: Record<string, unknown> = {}
+        for (const f of BASE_FIELDS[group]) base[f] = structuredClone(cards[oi]![f])
+        opt.base = { ...opt.base, ...base }
+      })
+    }
     mod.options.forEach((opt, oi) => {
       if (oi === mod.current) return
       const weapons = own[oi]!.map((i) => structuredClone(lists[oi]![i]!))

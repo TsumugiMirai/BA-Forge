@@ -145,11 +145,22 @@ const STRINGS = {
     chi: '选中填了名称的选项时，卡片会改成这个名称（像游戏里的变体名）；切走的选项会记住原来的名称，再选回来就恢复。留空 = 不改名。',
   },
   modNameNone: { eng: '(keeps the name)', chi: '（不改名）' },
-  importOptionWeapons: { eng: 'Weapons from a card…', chi: '从卡片导入武器…' },
+  importOptionWeapons: { eng: 'Take from a card…', chi: '从卡片导入…' },
   importOptionWeaponsHint: {
-    eng: 'Gives the chosen option the weapons of another card (to merge two cards into one, like the game’s squad loadouts): its current weapons are replaced, and weapons this card already has as its own stay shared.',
-    chi: '把另一张卡的武器设为当前选中选项的武器（用来把两张卡合并成一张，像游戏里的班组配置）：这个选项原来的武器会被替换，两张卡都有的武器保持共用。',
+    eng: 'Gives the chosen option the weapons of another card, and the properties this slot controls (armor, stats, abilities, portrait), to merge two cards into one like the game’s squad loadouts. Weapons this card already has as its own stay shared.',
+    chi: '把另一张卡的武器，以及这个改装件勾选控制的属性（装甲、属性、能力、立绘），设为当前选中选项的内容，用来把两张卡合并成一张（像游戏里的班组配置）。两张卡都有的武器保持共用。',
   },
+  modControls: { eng: 'Each option has its own', chi: '每个选项各自的' },
+  modControlsHint: {
+    eng: 'Ticked properties belong to the chosen option: pick an option, edit them on the card, and picking another option swaps in that option’s own (like the game’s armor packages and squad loadouts). Unticked ones are shared by every option.',
+    chi: '勾选的属性属于当前选中的选项：先选中一个选项，在卡面上改好；切换选项时会换成那个选项自己的一套（像游戏里的装甲包、班组配置）。不勾的属性所有选项共用。',
+  },
+  modControlsTaken: { eng: 'Controlled by “{slot}”', chi: '已由“{slot}”控制' },
+  modControlArmor: { eng: 'Armor', chi: '装甲' },
+  modControlStats: { eng: 'Stats', chi: '属性' },
+  modControlAbilities: { eng: 'Abilities', chi: '能力' },
+  modControlPortrait: { eng: 'Portrait', chi: '立绘' },
+
   modWeaponsHint: {
     eng: 'Ticked weapons belong to the chosen option: picking another option swaps them for that option’s own weapons. Pick an option, add its weapons to the card and tick them here.',
     chi: '勾选的武器属于当前选中的选项：切换选项时会换成那个选项自己的武器。先选中一个选项，在卡面上添加它的武器，再在这里勾选。',

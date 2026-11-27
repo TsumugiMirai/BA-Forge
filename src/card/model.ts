@@ -141,7 +141,30 @@ export interface CardModOption {
   /** the card's name while this option is chosen (like the game's variant
    *  names, "Jiaolong Commandos (CQC)"); absent = choosing it keeps the name */
   cardName?: string
+  /** this option's own values of the card properties its slot controls
+   *  (CardModSlot.controls), stored while another option is chosen; the
+   *  chosen option's values are the card's own */
+  base?: Partial<Pick<CardModel, BaseField>>
 }
+
+/** groups of card properties an option can change besides weapons, cost and
+ *  name (like the game's armor packages, sensors, protection systems) */
+export type BaseGroup = 'armor' | 'stats' | 'abilities' | 'portrait'
+
+export const BASE_GROUPS: BaseGroup[] = ['armor', 'stats', 'abilities', 'portrait']
+
+/** the card fields each group covers */
+export const BASE_FIELDS = {
+  // vehicles' facing armor (infantry and aircraft keep theirs in the stats)
+  armor: ['armor', 'armorOverlay'],
+  // the stat row: armor value, health, squad, optics, stealth, speeds, …
+  stats: ['stats', 'health', 'squadSize', 'deathTimer'],
+  // smoke, APS, ECM, sprint, … and the amphibious / airdrop chips
+  abilities: ['abilities', 'tags'],
+  portrait: ['portrait', 'background'],
+} as const satisfies Record<BaseGroup, readonly (keyof CardModel)[]>
+
+export type BaseField = (typeof BASE_FIELDS)[BaseGroup][number]
 
 /** a modification slot of a custom card, like the game's armor/weapon slots */
 export interface CardModSlot {
@@ -150,6 +173,9 @@ export interface CardModSlot {
   options: CardModOption[]
   /** index of the chosen option */
   current: number
+  /** card properties each option of this slot has its own of (armor, stats,
+   *  abilities, portrait); absent = the options share the card's */
+  controls?: BaseGroup[]
 }
 
 export interface CardModel {
@@ -418,7 +444,48 @@ export function switchModOption(card: CardModel, slot: number, to: number) {
     if (old) old.cardName = card.name
     card.name = next.cardName
   }
+
+  // the properties the slot controls: the old option keeps the card's values
+  // (edits included), the new option's own come back (an option without its
+  // own yet starts from the card's)
+  for (const field of controlledFields(s)) {
+    if (old) setBase(old, field, structuredClone(card[field]))
+    if (next.base && field in next.base) setField(card, field, structuredClone(next.base[field]))
+  }
+  delete next.base
   s.current = to
+}
+
+/** the card fields a slot's options each have their own of */
+export function controlledFields(slot: CardModSlot): BaseField[] {
+  return (slot.controls ?? []).flatMap((g) => [...BASE_FIELDS[g]])
+}
+
+function setBase<F extends BaseField>(opt: CardModOption, field: F, value: CardModel[F]) {
+  ;(opt.base ??= {})[field] = value
+}
+
+function setField<F extends BaseField>(card: CardModel, field: F, value: unknown) {
+  card[field] = value as CardModel[F]
+}
+
+/** Turn group `group` of slot `slot` on or off. Off: the options' own values
+ *  for it are dropped and every option shares the card's again. */
+export function setSlotControls(card: CardModel, slot: number, group: BaseGroup, on: boolean) {
+  const s = card.mods?.[slot]
+  if (!s) return
+  const groups = new Set(s.controls ?? [])
+  if (on) groups.add(group)
+  else {
+    groups.delete(group)
+    for (const o of s.options) {
+      if (!o.base) continue
+      for (const f of BASE_FIELDS[group]) delete o.base[f]
+      if (Object.keys(o.base).length === 0) delete o.base
+    }
+  }
+  s.controls = BASE_GROUPS.filter((g) => groups.has(g))
+  if (s.controls.length === 0) delete s.controls
 }
 
 /** a weapon as shown (name, icon, mount count), to tell the same weapon on two cards */
@@ -431,9 +498,16 @@ function shownWeapon(w: WeaponModel): string {
  * (merging two cards into one with a slot, like the game's squad loadouts):
  * the weapons the option carries now are dropped, and `other`'s weapons are
  * added for it, except those the card already shows as its own (same name,
- * icon and count: they stay shared by every option).
+ * icon and count: they stay shared by every option). The properties the slot
+ * controls (armor, stats, abilities, portrait) are taken from `other` too.
  */
-export function importOptionWeapons(card: CardModel, slot: number, other: WeaponModel[]) {
+export function importOption(card: CardModel, slot: number, from: CardModel) {
+  const s = card.mods?.[slot]
+  if (s) for (const field of controlledFields(s)) setField(card, field, structuredClone(from[field]))
+  importOptionWeapons(card, slot, from.weapons)
+}
+
+function importOptionWeapons(card: CardModel, slot: number, other: WeaponModel[]) {
   for (let i = card.weapons.length - 1; i >= 0; i--) {
     if (card.weapons[i]!.modSlot !== slot) continue
     card.weapons.splice(i, 1)

@@ -146,3 +146,5 @@
 .mods-weapon.other { opacity: 0.55; }
 .mods-weapon-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mods-weapon-other { font-size: 10px; color: #aab6c2; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mods-controls { margin-top: 4px; padding-top: 5px; border-top: 1px dashed rgba(255, 255, 255, 0.12); }
+.mods-controls-row { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; }

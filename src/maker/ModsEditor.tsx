@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAppStore } from '../state/store'
-import type { CardModel, CardModSlot } from '../card/model'
-import { importOptionWeapons, untagRemovedModSlot } from '../card/model'
+import type { BaseGroup, CardModel, CardModSlot } from '../card/model'
+import { BASE_GROUPS, importOption, setSlotControls, untagRemovedModSlot } from '../card/model'
 import { iconUrl, thumbnailUrl, weaponIconUrl } from '../assets'
 import { getCloudCard } from '../cloud/cloudCards'
 import { parseSavedCardFile } from '../state/savedCards'
@@ -15,6 +15,7 @@ import { weaponLibrary } from '../ui/libraryItems'
 import { TAG_ICON_NAMES, prettyIconName } from '../ui/iconLibrary'
 import { useCardEditMode } from '../card/cardContext'
 import { t } from '../ui/i18n'
+import type { UiStringKey } from '../ui/i18n'
 
 /** A modification icon as stored on a card: "weapon:<sprite>",
  *  "icon:<sprite>" or an uploaded data URL. */
@@ -259,6 +260,34 @@ export function ModsEditor() {
               </label>
             ))}
           </details>
+          <div className="mods-controls">
+            <div className="mods-weapons-title" title={t(lang, 'modControlsHint')}>
+              {t(lang, 'modControls')}
+            </div>
+            <div className="mods-controls-row">
+              {BASE_GROUPS.map((g) => {
+                const owner = list.findIndex((other, oi) => oi !== si && other.controls?.includes(g))
+                return (
+                  <label
+                    key={g}
+                    className={`mods-weapon ${owner >= 0 ? 'other' : ''}`}
+                    title={owner >= 0 ? t(lang, 'modControlsTaken').replace('{slot}', list[owner]!.name) : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={owner >= 0}
+                      checked={!!slot.controls?.includes(g)}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        update((c) => setSlotControls(c, si, g, on))
+                      }}
+                    />
+                    <span>{t(lang, CONTROL_LABEL[g])}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
           {card.weapons.length > 0 && (
             <div className="mods-weapons">
               <div className="mods-weapons-title" title={t(lang, 'modWeaponsHint')}>
@@ -325,7 +354,7 @@ export function ModsEditor() {
             const slot = importSlot
             setImportSlot(null)
             void loadCardForImport(key).then((other) => {
-              if (other) update((c) => importOptionWeapons(c, slot, other.weapons))
+              if (other) update((c) => importOption(c, slot, other))
             })
           }}
           onCancel={() => setImportSlot(null)}
@@ -367,6 +396,14 @@ export function ModsEditor() {
       )}
     </div>
   )
+}
+
+/** checkbox label of each group of card properties an option can own */
+const CONTROL_LABEL: Record<BaseGroup, UiStringKey> = {
+  armor: 'modControlArmor',
+  stats: 'modControlStats',
+  abilities: 'modControlAbilities',
+  portrait: 'modControlPortrait',
 }
 
 /** a card picked in the import dialog ("cloud:<id>" or "local:<id>") */
